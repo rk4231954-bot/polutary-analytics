@@ -1,0 +1,98 @@
+/* Dataset Upload page */
+.pa-link { color: var(--pa-emerald); font-weight: 500; text-decoration: underline; text-underline-offset: 2px; }
+
+.pa-upload-reqs { list-style: none; margin: 0 0 var(--pa-space-4); padding: 0; display: grid; gap: var(--pa-space-2); font-size: var(--pa-fs-sm); }
+.pa-upload-reqs li { display: flex; align-items: flex-start; gap: var(--pa-space-2); }
+.pa-upload-reqs svg { color: var(--pa-emerald); flex-shrink: 0; margin-top: 3px; }
+
+.pa-file-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--pa-space-3);
+  padding: var(--pa-space-3) var(--pa-space-4);
+  border: 1px solid var(--pa-border);
+  border-radius: var(--pa-radius);
+  background: var(--pa-surface-2);
+}
+.pa-file-summary__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--pa-radius);
+  background: var(--pa-green-50);
+  color: var(--pa-emerald);
+}
+.pa-local-check { display: inline-flex; align-items: center; gap: var(--pa-space-1); font-size: var(--pa-fs-xs); color: var(--pa-text-2); }
+.pa-local-check svg { color: var(--pa-emerald); }
+
+.pa-mapping .form-select { min-width: 180px; }
+.pa-mapping td { padding-top: var(--pa-space-2); padding-bottom: var(--pa-space-2); }
+
+.pa-quality-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--pa-space-3); }
+.pa-quality-stat {
+  display: flex;
+  gap: var(--pa-space-3);
+  padding: var(--pa-space-3) var(--pa-space-4);
+  border: 1px solid var(--pa-border);
+  border-radius: var(--pa-radius);
+  min-width: 0;
+}
+.pa-quality-stat__icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--pa-radius);
+  background: var(--pa-surface-2);
+  color: var(--pa-text-2);
+}
+.pa-quality-stat--success .pa-quality-stat__icon { background: var(--pa-success-bg); color: var(--pa-success-text); }
+.pa-quality-stat--warning .pa-quality-stat__icon { background: var(--pa-warning-bg); color: var(--pa-warning-text); }
+
+.pa-missing-list,
+.pa-issue-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--pa-space-3); }
+.pa-missing-list { max-height: 260px; overflow-y: auto; padding-right: var(--pa-space-1); }
+.pa-issue-list li { display: flex; align-items: flex-start; gap: var(--pa-space-3); font-size: var(--pa-fs-sm); }
+.pa-issue-list .pa-badge { min-width: 36px; justify-content: center; flex-shrink: 0; }
+.pa-issue-example { display: block; overflow-wrap: anywhere; }
+
+.pa-preview-table { max-height: 440px; overflow: auto; }
+.pa-preview-table td { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; font-size: var(--pa-fs-sm); padding-top: var(--pa-space-2); padding-bottom: var(--pa-space-2); }
+.pa-preview-table th { z-index: 1; }
+.pa-cell-missing { color: var(--pa-text-muted); font-style: italic; background: var(--pa-warning-bg); }
+
+.pa-upload-actions { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: var(--pa-space-4); }
+.pa-upload-farm { flex: 0 1 320px; min-width: 0; }
+.pa-upload-submit { display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
+
+@media (max-width: 991.98px) {
+  .pa-quality-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 575.98px) {
+  .pa-quality-grid { grid-template-columns: minmax(0, 1fr); }
+  .pa-file-summary { flex-wrap: wrap; }
+  .pa-upload-farm { flex-basis: 100%; }
+  .pa-upload-submit { align-items: stretch; text-align: left; width: 100%; }
+  .pa-upload-submit .btn { flex: 1; }
+  .pa-steps { padding-bottom: var(--pa-space-2); }
+}
+
+/* Vertical pipeline on phones (scoped to this page's stepper). */
+@media (max-width: 575.98px) {
+  [data-stepper] .pa-steps { flex-direction: column; gap: var(--pa-space-3); overflow: visible; }
+  [data-stepper] .pa-step {
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    column-gap: var(--pa-space-3);
+    align-items: center;
+    text-align: left;
+    min-width: 0;
+    padding: 0;
+  }
+  [data-stepper] .pa-step::before { display: none; }
+  [data-stepper] .pa-step__marker { grid-row: span 2; }
+  [data-stepper] .pa-step__label { margin-top: 0; }
+}

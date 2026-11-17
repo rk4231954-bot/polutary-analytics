@@ -1,0 +1,53 @@
+/* Settings */
+.pa-settings { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--pa-space-6); align-items: start; }
+.pa-settings__nav { display: flex; flex-direction: column; gap: 2px; position: sticky; top: calc(var(--pa-topbar-h) + var(--pa-space-6)); }
+.pa-settings__tab {
+  display: flex;
+  align-items: center;
+  gap: var(--pa-space-3);
+  height: 36px;
+  padding: 0 var(--pa-space-3);
+  border: 0;
+  border-radius: var(--pa-radius);
+  background: transparent;
+  font-size: var(--pa-fs-md);
+  font-weight: 500;
+  color: var(--pa-text-2);
+  text-align: left;
+  white-space: nowrap;
+  transition: background-color var(--pa-dur-fast) var(--pa-ease), color var(--pa-dur-fast) var(--pa-ease);
+}
+.pa-settings__tab:hover { background: var(--pa-surface-2); color: var(--pa-text); }
+.pa-settings__tab[aria-selected="true"] { background: var(--pa-green-50); color: var(--pa-forest); font-weight: 600; }
+.pa-settings__tab[aria-selected="true"] svg { color: var(--pa-emerald); }
+.pa-settings__narrow { max-width: 480px; }
+.pa-settings__actions { display: flex; flex-wrap: wrap; gap: var(--pa-space-2); margin-top: var(--pa-space-5); padding-top: var(--pa-space-4); border-top: 1px solid var(--pa-border); }
+.pa-settings fieldset { min-width: 0; }
+.pa-settings fieldset:disabled .form-control { background: var(--pa-surface-2); }
+.pa-settings__list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--pa-space-3); color: var(--pa-text-2); }
+.pa-settings__list li { display: flex; gap: var(--pa-space-3); align-items: flex-start; }
+.pa-settings__list svg { flex-shrink: 0; margin-top: 2px; color: var(--pa-emerald); }
+.pa-settings__code {
+  margin: 0;
+  padding: var(--pa-space-3) var(--pa-space-4);
+  border-radius: var(--pa-radius);
+  background: #0f1a14;
+  color: #e3efe7;
+  font-family: var(--pa-font-mono);
+  font-size: var(--pa-fs-sm);
+  overflow-x: auto;
+}
+@media (max-width: 991.98px) {
+  .pa-settings { grid-template-columns: minmax(0, 1fr); gap: var(--pa-space-4); }
+  .pa-settings__nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--pa-border);
+    gap: var(--pa-space-1);
+    scrollbar-width: none;
+  }
+  .pa-settings__nav::-webkit-scrollbar { display: none; }
+  .pa-settings__tab { border-radius: var(--pa-radius) var(--pa-radius) 0 0; flex-shrink: 0; }
+  .pa-settings__tab[aria-selected="true"] { box-shadow: inset 0 -2px 0 var(--pa-emerald); }
+}

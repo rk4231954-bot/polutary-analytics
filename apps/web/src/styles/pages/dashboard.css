@@ -1,0 +1,6 @@
+/* Dashboard page */
+.pa-dash-farm { width: auto; min-width: 200px; }
+.pa-activity .pa-list-item { padding-top: var(--pa-space-2); padding-bottom: var(--pa-space-2); }
+@media (max-width: 575.98px) {
+  .pa-dash-farm { min-width: 0; flex: 1 1 100%; }
+}

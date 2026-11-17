@@ -1,0 +1,43 @@
+/* Data collection page */
+.pa-reading-group { margin: var(--pa-space-5) 0 0; padding: var(--pa-space-4) 0 0; border-top: 1px solid var(--pa-border); }
+.pa-reading-group legend { float: none; width: auto; margin-bottom: var(--pa-space-3); padding: 0; }
+/* Feedback sits outside the input group, so reveal it based on the field state. */
+.pa-reading-form .pa-field:has(.is-invalid) > .invalid-feedback { display: block; }
+.pa-reading-form .input-group .form-control.is-invalid ~ .input-group-text { border-color: var(--pa-danger); }
+.pa-reading-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--pa-space-2);
+  margin-top: var(--pa-space-5);
+  padding-top: var(--pa-space-4);
+  border-top: 1px solid var(--pa-border);
+}
+.pa-reading-actions .pa-text-xs { display: inline-flex; align-items: center; gap: 4px; }
+
+.pa-pipeline { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--pa-space-4); position: relative; }
+.pa-pipeline li { display: flex; gap: var(--pa-space-3); position: relative; }
+.pa-pipeline li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 32px;
+  bottom: calc(-1 * var(--pa-space-4) + 2px);
+  width: 1px;
+  background: var(--pa-border-strong);
+}
+.pa-pipeline__icon {
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--pa-green-50);
+  color: var(--pa-emerald);
+  border: 1px solid var(--pa-green-100);
+}
+.pa-pipeline__title { font-weight: 600; font-size: var(--pa-fs-md); }
+@media (max-width: 575.98px) {
+  .pa-reading-actions .btn { flex: 1 1 auto; }
+}

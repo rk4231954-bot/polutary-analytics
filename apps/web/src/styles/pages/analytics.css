@@ -1,0 +1,21 @@
+/* Analytics pages (environmental, feed, growth, mortality) */
+.pa-analytics-filters { margin-bottom: var(--pa-space-6); }
+.pa-analytics-filters .pa-toolbar { align-items: flex-end; gap: var(--pa-space-3) var(--pa-space-4); }
+.pa-analytics-filter { display: flex; flex-direction: column; min-width: 0; }
+.pa-analytics-filter .form-label { font-size: var(--pa-fs-xs); color: var(--pa-text-2); }
+.pa-analytics-filter .form-select { min-width: 220px; }
+.pa-analytics-provenance {
+  display: flex;
+  align-items: center;
+  gap: var(--pa-space-2);
+  padding: var(--pa-space-2) var(--pa-space-4);
+  font-size: var(--pa-fs-xs);
+  color: var(--pa-text-2);
+}
+.pa-analytics-provenance svg { flex-shrink: 0; }
+.pa-analytics-flag { color: var(--pa-danger-text); font-weight: 600; }
+@media (max-width: 575.98px) {
+  .pa-analytics-filter { flex: 1 1 100%; }
+  .pa-analytics-filter .form-select { min-width: 0; width: 100%; }
+  .pa-analytics-provenance { align-items: flex-start; }
+}

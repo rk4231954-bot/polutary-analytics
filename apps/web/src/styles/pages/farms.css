@@ -1,0 +1,27 @@
+/* Farm management pages (farms list, farm detail) */
+.pa-farm-link { color: var(--pa-text); }
+.pa-farm-link:hover { color: var(--pa-emerald); }
+.pa-util { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 88px; }
+.pa-util .pa-progress { width: 88px; height: 4px; }
+.pa-row-actions { display: inline-flex; align-items: center; gap: 2px; }
+.pa-row-actions .btn:hover { color: var(--pa-text); }
+.pa-row-actions [data-action="delete"]:hover { color: var(--pa-danger-text); background: var(--pa-danger-bg); }
+
+.pa-detail-title { display: flex; align-items: center; flex-wrap: wrap; gap: var(--pa-space-2) var(--pa-space-3); }
+.pa-detail-meta { margin-top: var(--pa-space-2); }
+.pa-back-link { display: inline-flex; align-items: center; gap: var(--pa-space-1); margin-bottom: var(--pa-space-3); font-size: var(--pa-fs-sm); font-weight: 500; color: var(--pa-text-2); }
+.pa-back-link:hover { color: var(--pa-text); }
+.pa-capacity-meter { display: block; width: 120px; margin-top: var(--pa-space-1); }
+.pa-capacity-meter .pa-progress__bar { display: block; }
+@media (max-width: 575.98px) {
+  .pa-page-header__actions .btn { flex: 1 1 auto; }
+}
+
+/* Two-up KPI cards on phones (shared .pa-grid--4 collapses to one column). */
+@media (max-width: 767.98px) {
+  .pa-grid--4.pa-fm-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pa-space-3); }
+  .pa-fm-kpis .pa-kpi { padding: var(--pa-space-3) var(--pa-space-4); }
+  .pa-fm-kpis .pa-kpi__value { font-size: var(--pa-fs-2xl); }
+}
+/* Tables scroll horizontally rather than squeezing cells into tall wraps. */
+.pa-fm-table .pa-table td { white-space: nowrap; }

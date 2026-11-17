@@ -1,0 +1,51 @@
+/* Users & Roles */
+.pa-role-card { display: flex; flex-direction: column; gap: var(--pa-space-3); padding: var(--pa-space-4) var(--pa-space-5); }
+.pa-role-card__head { display: flex; align-items: flex-start; gap: var(--pa-space-3); }
+.pa-role-card__head > .min-w-0 { flex: 1; }
+.pa-role-card__count {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: var(--pa-fs-xl);
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--pa-text);
+}
+.pa-role-card__count small { font-size: var(--pa-fs-xs); font-weight: 400; color: var(--pa-text-2); }
+.pa-role-card__perms { list-style: none; margin: 0; padding: var(--pa-space-3) 0 0; border-top: 1px solid var(--pa-border); display: grid; gap: var(--pa-space-2); font-size: var(--pa-fs-sm); color: var(--pa-text-2); }
+.pa-role-card__perms li { display: flex; gap: var(--pa-space-2); align-items: flex-start; }
+.pa-role-card__perms svg { color: var(--pa-emerald); flex-shrink: 0; margin-top: 3px; }
+
+.pa-users-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pa-space-3);
+  padding: var(--pa-space-2) var(--pa-space-4) 0;
+  border-bottom: 1px solid var(--pa-border);
+  flex-wrap: wrap-reverse;
+}
+.pa-users-tabs [data-tab-source]:not(:empty) { padding-top: var(--pa-space-1); }
+.pa-users-tabs .pa-tabs { border-bottom: 0; min-width: 0; }
+.pa-users-tabs .pa-tab { display: inline-flex; align-items: center; gap: 6px; }
+.pa-users-farms { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.pa-users-danger { color: var(--pa-danger-text) !important; }
+
+.pa-check-list {
+  display: grid;
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: var(--pa-space-2);
+  border: 1px solid var(--pa-border-strong);
+  border-radius: var(--pa-radius);
+  background: var(--pa-surface);
+}
+.pa-check-list__item { display: flex; align-items: center; gap: var(--pa-space-2); margin: 0; padding: 6px var(--pa-space-2) 6px 2rem; border-radius: var(--pa-radius-sm); cursor: pointer; }
+.pa-check-list__item:hover { background: var(--pa-surface-2); }
+.pa-check-list__item .form-check-input { margin-top: 0; }
+@media (max-width: 575.98px) {
+  .pa-users-tabs { padding: var(--pa-space-2) var(--pa-space-2) 0; }
+}
+.pa-table td .pa-mono { white-space: nowrap; }

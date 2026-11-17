@@ -1,0 +1,106 @@
+/* ==========================================================================
+   Design tokens — the single source of truth for colour, type, spacing,
+   radii, shadows and component dimensions. Never hard-code these values
+   in component or page CSS; reference the variables instead.
+   ========================================================================== */
+:root {
+  /* Brand */
+  --pa-forest: #174c36;
+  --pa-forest-hover: #123d2b;
+  --pa-emerald: #21845a;
+  --pa-emerald-hover: #1b6f4b;
+  --pa-green-50: #eaf4ee;
+  --pa-green-100: #d5eadc;
+
+  /* Surfaces */
+  --pa-bg: #f7f9f7;
+  --pa-surface: #ffffff;
+  --pa-surface-2: #f0f4f1;
+  --pa-surface-hover: #f4f7f5;
+  --pa-border: #e2e8e3;
+  --pa-border-strong: #cfd8d2;
+
+  /* Text */
+  --pa-text: #17231d;
+  --pa-text-2: #5f6b63; /* spec #6B776F is 4.42:1 on --pa-bg; darkened to 5.27:1 for WCAG AA */
+  --pa-text-muted: #98a29b; /* decorative / placeholder only — not for essential text */
+
+  /* Status */
+  --pa-success: #198754;
+  --pa-success-text: #146c43; /* AA on --pa-success-bg */
+  --pa-success-bg: #e8f5ee;
+  --pa-warning: #e5a000;
+  --pa-warning-text: #8a5d00; /* readable warning text on light backgrounds */
+  --pa-warning-bg: #fdf5e1;
+  --pa-danger: #dc4545;
+  --pa-danger-text: #b42f2f;
+  --pa-danger-bg: #fcecec;
+  --pa-info: #3182ce;
+  --pa-info-text: #22609c;
+  --pa-info-bg: #eaf3fb;
+
+  /* Data visualisation (ordered categorical palette) */
+  --pa-chart-1: #21845a;
+  --pa-chart-2: #3182ce;
+  --pa-chart-3: #e5a000;
+  --pa-chart-4: #8b5cf6;
+  --pa-chart-5: #dc4545;
+  --pa-chart-6: #0f766e;
+
+  /* Typography */
+  --pa-font: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --pa-font-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+  --pa-fs-xs: 0.75rem;   /* 12 */
+  --pa-fs-sm: 0.8125rem; /* 13 */
+  --pa-fs-md: 0.875rem;  /* 14 — base */
+  --pa-fs-lg: 1rem;      /* 16 */
+  --pa-fs-xl: 1.125rem;  /* 18 */
+  --pa-fs-2xl: 1.375rem; /* 22 */
+  --pa-fs-3xl: 1.75rem;  /* 28 */
+  --pa-lh-tight: 1.25;
+  --pa-lh: 1.5;
+
+  /* Spacing (4px grid) */
+  --pa-space-1: 0.25rem;
+  --pa-space-2: 0.5rem;
+  --pa-space-3: 0.75rem;
+  --pa-space-4: 1rem;
+  --pa-space-5: 1.25rem;
+  --pa-space-6: 1.5rem;
+  --pa-space-8: 2rem;
+  --pa-space-10: 2.5rem;
+  --pa-space-12: 3rem;
+
+  /* Radii */
+  --pa-radius-sm: 6px;
+  --pa-radius: 8px;
+  --pa-radius-lg: 10px;
+  --pa-radius-pill: 999px;
+
+  /* Elevation */
+  --pa-shadow-xs: 0 1px 2px rgba(16, 32, 24, 0.05);
+  --pa-shadow-sm: 0 1px 2px rgba(16, 32, 24, 0.04), 0 1px 3px rgba(16, 32, 24, 0.06);
+  --pa-shadow-md: 0 4px 12px rgba(16, 32, 24, 0.08), 0 1px 3px rgba(16, 32, 24, 0.05);
+  --pa-shadow-lg: 0 12px 32px rgba(16, 32, 24, 0.12), 0 2px 6px rgba(16, 32, 24, 0.06);
+  --pa-focus-ring: 0 0 0 3px rgba(33, 132, 90, 0.25);
+
+  /* Component dimensions */
+  --pa-sidebar-w: 264px;
+  --pa-sidebar-w-collapsed: 68px;
+  --pa-topbar-h: 60px;
+  --pa-control-h: 36px;
+  --pa-control-h-sm: 30px;
+  --pa-content-max: 1440px;
+
+  /* Motion */
+  --pa-ease: cubic-bezier(0.2, 0, 0, 1);
+  --pa-dur-fast: 120ms;
+  --pa-dur: 200ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --pa-dur-fast: 0ms;
+    --pa-dur: 0ms;
+  }
+}
