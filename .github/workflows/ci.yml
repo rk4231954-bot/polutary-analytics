@@ -19,6 +19,7 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.3
         with:
           python-version: "3.12"
+          enable-cache: false
       - run: bun install --frozen-lockfile
       - run: bun run setup
       - run: bun run lint
