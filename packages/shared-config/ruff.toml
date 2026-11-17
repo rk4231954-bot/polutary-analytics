@@ -1,0 +1,18 @@
+# Base Ruff configuration shared by the Python apps (apps/api, apps/ml).
+# Apps extend this file with: extend = "../../packages/shared-config/ruff.toml"
+target-version = "py312"
+line-length = 100
+
+[lint]
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "W",   # pycodestyle warnings
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "UP",  # pyupgrade
+  "S",   # flake8-bandit (security)
+]
+
+[format]
+quote-style = "double"

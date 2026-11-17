@@ -1,0 +1,47 @@
+# --- JavaScript / Bun / Turborepo ---
+node_modules/
+dist/
+.turbo/
+*.log
+
+# --- Python ---
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+
+# --- Secrets / local environment ---
+.env
+.env.*
+!.env.example
+
+# --- Application data (SQLite lives in apps/api/instance) ---
+apps/api/instance/
+*.sqlite
+*.sqlite3
+*.db
+
+# --- Datasets: raw/processed files are NOT committed (only documented samples are) ---
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# --- Trained model artifacts and generated reports ---
+apps/ml/models/*
+!apps/ml/models/.gitkeep
+reports/
+
+# --- Hadoop / Hive local volumes ---
+infrastructure/hadoop-hive/volumes/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

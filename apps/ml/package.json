@@ -1,0 +1,14 @@
+{
+  "name": "@polutary/ml",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Turborepo wrapper for the Python ml service. The service itself does not depend on Bun.",
+  "scripts": {
+    "setup": "uv sync",
+    "lint": "uv run ruff check . && uv run ruff format --check .",
+    "test": "uv run pytest"
+  },
+  "devDependencies": {
+    "@polutary/shared-config": "workspace:*"
+  }
+}

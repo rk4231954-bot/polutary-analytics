@@ -1,0 +1,24 @@
+{
+  "name": "polutary-analytics",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Apache Hive-based predictive analytics system for poultry farming",
+  "packageManager": "bun@1.4.4",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "setup": "turbo run setup",
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test"
+  },
+  "devDependencies": {
+    "turbo": "2.11.11"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "@polutary/shared-config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared lint/format configuration consumed by apps in this monorepo",
+  "files": [
+    "ruff.toml"
+  ]
+}

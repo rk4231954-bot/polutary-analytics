@@ -1,0 +1,19 @@
+{
+  "name": "@polutary/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bunx --bun vite",
+    "build": "bunx --bun vite build",
+    "preview": "bunx --bun vite preview"
+  },
+  "dependencies": {
+    "@popperjs/core": "2.11.8",
+    "bootstrap": "5.3.9",
+    "chart.js": "4.6.1"
+  },
+  "devDependencies": {
+    "vite": "8.3.8"
+  }
+}
