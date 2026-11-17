@@ -43,15 +43,18 @@ cd polutary-analytics
 cp .env.example .env          # then set SECRET_KEY and the other values
 bun install                   # JS deps + turbo (creates bun.lock)
 bun run setup                 # uv sync for apps/api and apps/ml
+# create the first administrator (prompts for a password; public sign-up never grants admin)
+cd apps/api && uv run flask --app run create-admin --email you@example.org --name "Your Name" && cd ../..
 ```
 
 ## Common commands
 
 ```bash
-bun run dev     # start dev servers (currently the Vite frontend, at http://localhost:5173)
+bun run dev     # Vite frontend (http://localhost:5173) + Flask API (http://127.0.0.1:5000, proxied at /api)
 bun run lint    # ruff on the Python apps
-bun run test    # pytest on the Python apps
+bun run test    # pytest on the Python apps + bun test for the frontend
 bun run build   # production build of the frontend
 ```
 
 Each Python app also works on its own without Bun: `cd apps/api && uv sync && uv run pytest`.
+API endpoints, database schema and security design: [`apps/api/README.md`](apps/api/README.md).

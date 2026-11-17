@@ -56,7 +56,7 @@ Data flow: **upload CSV → validate → preprocess → write to HDFS → Hive e
 | Path | Responsibility |
 |------|----------------|
 | `apps/web` | Frontend. Vite dev server and build, Bootstrap 5 UI, Chart.js charts. Plain JavaScript, no framework. |
-| `apps/api` | Flask REST API. Python package `poultry_api` in `src/`, tests in `tests/`. SQLite file in `apps/api/instance/` (git-ignored). |
+| `apps/api` | Flask REST API. Package `app/` (`models/`, `routes/`, `services/`, `utils/`), entry point `run.py`, tests in `tests/`. SQLite file in `apps/api/instance/` (git-ignored). Full API docs in `apps/api/README.md`. |
 | `apps/ml` | ML pipelines. Python package `poultry_ml` in `src/`. Trained artifacts in `models/` (git-ignored). |
 | `packages/shared-config` | Shared configuration (base `ruff.toml`). |
 | `infrastructure/hadoop-hive` | Docker Compose and config for the real Hadoop + Hive cluster. |
@@ -73,7 +73,7 @@ Data flow: **upload CSV → validate → preprocess → write to HDFS → Hive e
 
 - **Monorepo:** Bun 1.4.4 (workspaces), Turborepo 2.11.11
 - **Frontend:** HTML5, CSS3, Bootstrap 5.3.9, Chart.js 4.6.1, Vite 8.3.8, vanilla JS (ES modules)
-- **Backend:** Python 3.12, Flask 3.1.3, Flask-SQLAlchemy 3.1.1, SQLAlchemy 2.0.58, python-dotenv 1.2.4
+- **Backend:** Python 3.11+ (repo default 3.12), Flask 3.1.3, Flask-SQLAlchemy 3.1.1, SQLAlchemy 2.0.58, python-dotenv 1.2.4, Flask-JWT-Extended 4.7.4, Flask-CORS 6.0.5, argon2-cffi 25.1.0
 - **Big Data:** Apache Hadoop (HDFS), Apache Hive (HiveServer2), PyHive 0.7.0 with thrift 0.25.0, thrift-sasl 0.4.3, pure-sasl 0.6.2
 - **ML:** pandas 3.1.1, NumPy 2.5.5, scikit-learn 1.9.1, statsmodels 0.15.0 (ARIMA), joblib 1.6.0
 - **Tooling:** uv (Python envs/locks), pytest 9.2.0, Ruff 0.17.5
@@ -113,6 +113,7 @@ Hadoop/Hive (from stage 7): `docker compose -f infrastructure/hadoop-hive/docker
 bun run lint                  # ruff check + format check
 bun run test                  # pytest in every Python app
 cd apps/api && uv run pytest  # one app, without Bun
+cd apps/api && uv run python run.py   # API on :5000 (needs SECRET_KEY in apps/api/.env)
 ```
 
 - Unit tests sit next to each app in `tests/`.
@@ -121,9 +122,9 @@ cd apps/api && uv run pytest  # one app, without Bun
 
 ## 10. Security requirements
 
-- Passwords hashed with a strong algorithm (Werkzeug `generate_password_hash`, scrypt/pbkdf2). Never stored or logged in plain text.
-- Session/auth secrets only from `SECRET_KEY` in the environment. `.env` is never committed.
-- Role-based access control (e.g. `admin`, `farm_manager`, `analyst`) enforced server-side on every protected endpoint.
+- Passwords hashed with Argon2id (argon2-cffi). Never stored or logged in plain text.
+- Sessions: JWT in an HttpOnly cookie (Flask-JWT-Extended) with double-submit CSRF (`X-CSRF-TOKEN`). Secrets only from `SECRET_KEY`/`JWT_SECRET_KEY` in the environment. `.env` is never committed.
+- Role-based access control (`admin`, `farm_manager`, `analyst`, `veterinarian`) plus farm-level assignments, enforced server-side on every protected endpoint. Public registration never grants admin; the first admin comes from `flask --app run create-admin`.
 - CSV uploads: extension + MIME check, size limit (`MAX_UPLOAD_MB`), schema validation, `secure_filename`, stored outside any web-served directory.
 - Parameterised SQL (SQLAlchemy) and HiveQL. Allow-list for any dynamic identifiers.
 - Audit log for logins (success and failure), uploads, deletions, role changes and report exports.
@@ -133,10 +134,10 @@ cd apps/api && uv run pytest  # one app, without Bun
 ## 11. Development roadmap
 
 1. ✅ Monorepo initialization
-2. Frontend scaffold (layout, pages, API client)
-3. Flask backend scaffold (app factory, config, health endpoint, error handling)
-4. SQLite database (models, migrations/initialisation)
-5. Authentication + roles
+2. ✅ Frontend scaffold (layout, pages, API client)
+3. ✅ Flask backend scaffold (app factory, config, health endpoint, error handling)
+4. ✅ SQLite database (models, initialisation)
+5. ✅ Authentication + roles (stages 3–5 were delivered together as "Stage 3: backend")
 6. CSV ingestion (upload, validation, preprocessing)
 7. Hadoop integration (Docker Compose, HDFS writes via WebHDFS)
 8. Hive integration (PyHive connection, external tables over HDFS)

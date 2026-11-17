@@ -2,4 +2,4 @@ extend = "../../packages/shared-config/ruff.toml"
 
 # per-file-ignores paths resolve relative to this file, so they live here, not in the shared config.
 [lint.per-file-ignores]
-"tests/**" = ["S101"]  # assert is fine in tests
+"tests/**" = ["S101", "S105", "S106"]  # asserts and fixed test passwords are fine in tests

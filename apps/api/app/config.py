@@ -1,0 +1,142 @@
+"""Configuration, read only from environment variables (.env files are loaded by run.py).
+
+Secrets are never hard-coded. Each setting has a safe default except SECRET_KEY,
+which must always be provided (except in the automated test configuration).
+"""
+
+from __future__ import annotations
+
+import os
+from datetime import timedelta
+
+WEAK_SECRETS = {"", "change-me", "changeme", "secret", "dev", "development"}
+
+
+def _bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None or value.strip() == "":
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _int(name: str, default: int) -> int:
+    value = os.environ.get(name, "").strip()
+    return int(value) if value else default
+
+
+def _list(name: str, default: str = "") -> list[str]:
+    return [
+        item.strip().rstrip("/")
+        for item in os.environ.get(name, default).split(",")
+        if item.strip()
+    ]
+
+
+class ConfigError(RuntimeError):
+    """Raised when the environment is missing or has unsafe settings."""
+
+
+class BaseConfig:
+    TESTING = False
+
+    def __init__(self) -> None:
+        self.SECRET_KEY = os.environ.get("SECRET_KEY", "")
+        # Separate JWT signing key is optional; falls back to SECRET_KEY.
+        self.JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY") or self.SECRET_KEY
+
+        # Database: SQLite by default. Any SQLAlchemy URL works (e.g. postgresql+psycopg://...).
+        # A relative SQLite path is resolved inside apps/api/instance/ by Flask-SQLAlchemy.
+        self.SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL", "sqlite:///polutary.sqlite3")
+        self.SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+        self.MAX_CONTENT_LENGTH = _int("MAX_REQUEST_KB", 64) * 1024  # JSON API; uploads come later
+        self.CORS_ALLOWED_ORIGINS = _list("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
+        self.TRUST_PROXY_COUNT = _int("TRUST_PROXY_COUNT", 0)
+
+        # --- JWT in HttpOnly cookies, with double-submit CSRF protection ---
+        self.JWT_TOKEN_LOCATION = ["cookies"]
+        self.JWT_COOKIE_CSRF_PROTECT = True
+        self.JWT_CSRF_METHODS = ["POST", "PUT", "PATCH", "DELETE"]
+        self.JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=_int("JWT_ACCESS_MINUTES", 30))
+        self.JWT_REFRESH_WINDOW = timedelta(minutes=_int("JWT_REFRESH_WINDOW_MINUTES", 10))
+        self.SESSION_MAX_AGE = timedelta(hours=_int("SESSION_MAX_HOURS", 12))
+        self.SESSION_REMEMBER_MAX_AGE = timedelta(days=_int("SESSION_REMEMBER_DAYS", 7))
+        self.JWT_COOKIE_SECURE = _bool("JWT_COOKIE_SECURE", False)
+        # "Lax" when the frontend is served from the same site (Vite proxy);
+        # "None" (+ JWT_COOKIE_SECURE=true) when it is on another domain such as Vercel.
+        self.JWT_COOKIE_SAMESITE = os.environ.get("JWT_COOKIE_SAMESITE", "Lax")
+        self.JWT_ACCESS_COOKIE_NAME = "pa_access"
+        self.JWT_ACCESS_CSRF_COOKIE_NAME = "pa_csrf"
+        self.JWT_ACCESS_COOKIE_PATH = "/api/"
+        self.JWT_ACCESS_CSRF_COOKIE_PATH = "/"
+        self.JWT_ACCESS_CSRF_HEADER_NAME = "X-CSRF-TOKEN"
+
+        # --- Login throttling (per IP and per email, counted on failures) ---
+        self.LOGIN_MAX_FAILURES_PER_EMAIL = _int("LOGIN_MAX_FAILURES_PER_EMAIL", 5)
+        self.LOGIN_MAX_FAILURES_PER_IP = _int("LOGIN_MAX_FAILURES_PER_IP", 20)
+        self.LOGIN_WINDOW_SECONDS = _int("LOGIN_WINDOW_SECONDS", 15 * 60)
+        self.REGISTER_MAX_PER_IP = _int("REGISTER_MAX_PER_IP", 10)
+        self.REGISTER_WINDOW_SECONDS = _int("REGISTER_WINDOW_SECONDS", 60 * 60)
+
+        self.HSTS_ENABLED = _bool("HSTS_ENABLED", False)
+
+    def validate(self) -> None:
+        if self.SECRET_KEY.strip().lower() in WEAK_SECRETS or len(self.SECRET_KEY) < 32:
+            raise ConfigError(
+                "SECRET_KEY is missing or too weak. Set a random value of at least 32 characters "
+                'in apps/api/.env, e.g. python3 -c "import secrets; print(secrets.token_hex(32))"'
+            )
+        if "*" in self.CORS_ALLOWED_ORIGINS:
+            raise ConfigError(
+                "CORS_ALLOWED_ORIGINS must list explicit origins; '*' is not allowed."
+            )
+        if self.JWT_COOKIE_SAMESITE not in {"Lax", "Strict", "None"}:
+            raise ConfigError("JWT_COOKIE_SAMESITE must be Lax, Strict or None.")
+        if self.JWT_COOKIE_SAMESITE == "None" and not self.JWT_COOKIE_SECURE:
+            raise ConfigError("JWT_COOKIE_SAMESITE=None requires JWT_COOKIE_SECURE=true (HTTPS).")
+
+
+class DevelopmentConfig(BaseConfig):
+    DEBUG = True
+
+
+class ProductionConfig(BaseConfig):
+    DEBUG = False
+
+    def validate(self) -> None:
+        super().validate()
+        if not self.JWT_COOKIE_SECURE:
+            raise ConfigError(
+                "Production requires JWT_COOKIE_SECURE=true (cookies over HTTPS only)."
+            )
+
+
+class TestingConfig(BaseConfig):
+    TESTING = True
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.SECRET_KEY = "test-only-secret-key-not-used-anywhere-else-0123456789"  # noqa: S105
+        self.JWT_SECRET_KEY = self.SECRET_KEY
+        self.SQLALCHEMY_DATABASE_URI = "sqlite://"
+        self.CORS_ALLOWED_ORIGINS = ["http://localhost:5173"]
+        self.JWT_COOKIE_SECURE = False
+        self.JWT_COOKIE_SAMESITE = "Lax"
+
+
+CONFIGS = {
+    "development": DevelopmentConfig,
+    "production": ProductionConfig,
+    "testing": TestingConfig,
+}
+
+
+def load_config(name: str | None = None) -> BaseConfig:
+    name = (
+        name or os.environ.get("APP_ENV") or os.environ.get("FLASK_ENV") or "development"
+    ).lower()
+    if name not in CONFIGS:
+        raise ConfigError(f"Unknown APP_ENV '{name}'. Use one of: {', '.join(CONFIGS)}.")
+    config = CONFIGS[name]()
+    config.validate()
+    return config

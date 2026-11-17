@@ -1,0 +1,111 @@
+"""Model → JSON dictionaries in the camelCase shape the frontend expects.
+
+Password hashes, token versions and other secrets are never serialised.
+"""
+
+from __future__ import annotations
+
+import json
+
+from app.models import AuditLog, BatchInspection, Farm, PoultryBatch, User
+from app.services.permissions import permissions_for
+from app.utils.time import iso, today
+
+
+def user_to_dict(user: User) -> dict:
+    farms = sorted((a.farm for a in user.assignments), key=lambda f: f.name.lower())
+    return {
+        "id": user.id,
+        "fullName": user.full_name,
+        "email": user.email,
+        "role": user.role_name,
+        "roleLabel": user.role.label,
+        "status": user.status,
+        "permissions": sorted(permissions_for(user)),
+        "farms": [f.name for f in farms],
+        "farmIds": [f.id for f in farms],
+        "mustChangePassword": user.must_change_password,
+        "lastLoginAt": iso(user.last_login_at),
+        "createdAt": iso(user.created_at),
+    }
+
+
+def batch_age_days(batch: PoultryBatch) -> int | None:
+    if batch.status == "planned":
+        return None
+    end = batch.end_date if batch.status == "completed" and batch.end_date else today()
+    return max(0, (end - batch.start_date).days)
+
+
+def batch_to_dict(batch: PoultryBatch) -> dict:
+    return {
+        "id": batch.id,
+        "code": batch.code,
+        "farmId": batch.farm_id,
+        "farmName": batch.farm.name,
+        "poultryType": batch.poultry_type,
+        "breed": batch.breed,
+        "initialCount": batch.initial_count,
+        # Placed birds. Mortality is subtracted once daily readings exist (stage 6).
+        "birdCount": batch.initial_count,
+        "ageDays": batch_age_days(batch),
+        "startDate": iso(batch.start_date),
+        "endDate": iso(batch.end_date),
+        # Weights come from daily readings (stage 6); not recorded yet.
+        "avgWeightG": None,
+        "status": batch.status,
+        "createdAt": iso(batch.created_at),
+        "updatedAt": iso(batch.updated_at),
+    }
+
+
+def farm_to_dict(farm: Farm, stats: dict | None = None) -> dict:
+    if stats is None:
+        active = [b for b in farm.batches if b.status == "active"]
+        stats = {
+            "total": len(farm.batches),
+            "active": len(active),
+            "birds": sum(b.initial_count for b in active),
+        }
+    return {
+        "id": farm.id,
+        "code": farm.code,
+        "name": farm.name,
+        "location": farm.location,
+        "capacity": farm.capacity,
+        "status": farm.status,
+        "housingType": farm.housing_type,
+        "manager": farm.manager_name,
+        "activeBatches": stats["active"],
+        "totalBatches": stats["total"],
+        "birdCount": stats["birds"],
+        "createdAt": iso(farm.created_at),
+        "updatedAt": iso(farm.updated_at),
+    }
+
+
+def inspection_to_dict(item: BatchInspection) -> dict:
+    return {
+        "id": item.id,
+        "batchId": item.batch_id,
+        "observedOn": iso(item.observed_on),
+        "healthStatus": item.health_status,
+        "observation": item.observation,
+        "inspector": item.inspector.full_name if item.inspector else None,
+        "createdAt": iso(item.created_at),
+    }
+
+
+def audit_to_dict(entry: AuditLog) -> dict:
+    return {
+        "id": entry.id,
+        "timestamp": iso(entry.created_at),
+        "actor": entry.actor_email or "anonymous",
+        "action": entry.action,
+        "resource": f"{entry.resource_type}:{entry.resource_id}"
+        if entry.resource_type and entry.resource_id
+        else (entry.resource_type or "—"),
+        "ip": entry.ip_address,
+        "outcome": entry.outcome,
+        "details": json.loads(entry.details) if entry.details else {},
+    }
