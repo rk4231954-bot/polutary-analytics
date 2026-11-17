@@ -2,3 +2,10 @@
 .pa-grid--kpi.pa-batch-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 @media (max-width: 1199.98px) { .pa-grid--kpi.pa-batch-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 767.98px) { .pa-grid--kpi.pa-batch-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Health inspections (batch detail) */
+.pa-inspections { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.pa-inspections__item { padding: var(--pa-space-3) 0; border-top: 1px solid var(--pa-border); }
+.pa-inspections__item:first-child { border-top: 0; padding-top: 0; }
+.pa-inspections__head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pa-space-2) var(--pa-space-3); }
+.pa-inspections__text { margin: var(--pa-space-2) 0 0; color: var(--pa-text-2); white-space: pre-line; overflow-wrap: anywhere; }

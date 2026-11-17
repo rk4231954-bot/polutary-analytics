@@ -10,7 +10,7 @@ import {
   Eye, EyeOff, FileCheck, FileDown, FileSpreadsheet, FileText, Filter, FlaskConical, Gauge, HardDrive, HeartPulse,
   History, Inbox, Info, KeyRound, Layers, LayoutDashboard, Leaf, LineChart, Loader2, Lock, LogOut, Mail, MapPin,
   Menu, Minus, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Pencil, Play, Plug, Plus, RefreshCw, Save, Scale,
-  ScrollText, Search, Server, Settings, Shield, ShieldAlert, ShieldCheck, SlidersHorizontal, Sprout, Table2,
+  ScrollText, Search, Server, Settings, Shield, ShieldAlert, ShieldCheck, SlidersHorizontal, Sprout, Stethoscope, Table2,
   Target, Thermometer, Trash2, TrendingDown, TrendingUp, Upload, UploadCloud, User, UserPlus, Users, Warehouse,
   Wheat, Wifi, WifiOff, Workflow, X, XCircle, createElement,
 } from "lucide";
@@ -31,7 +31,7 @@ const ICONS = {
   "map-pin": MapPin, menu: Menu, minus: Minus, more: MoreHorizontal, "panel-close": PanelLeftClose,
   "panel-open": PanelLeftOpen, pencil: Pencil, play: Play, plug: Plug, plus: Plus, refresh: RefreshCw, save: Save,
   scale: Scale, scroll: ScrollText, search: Search, server: Server, settings: Settings, shield: Shield,
-  "shield-alert": ShieldAlert, "shield-check": ShieldCheck, sliders: SlidersHorizontal, sprout: Sprout,
+  "shield-alert": ShieldAlert, "shield-check": ShieldCheck, sliders: SlidersHorizontal, sprout: Sprout, stethoscope: Stethoscope,
   table: Table2, target: Target, thermometer: Thermometer, trash: Trash2, "trending-down": TrendingDown,
   "trending-up": TrendingUp, upload: Upload, "upload-cloud": UploadCloud, user: User, "user-plus": UserPlus,
   users: Users, warehouse: Warehouse, wheat: Wheat, wifi: Wifi, "wifi-off": WifiOff, workflow: Workflow, x: X,

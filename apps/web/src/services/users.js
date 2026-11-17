@@ -3,12 +3,14 @@
  * by these endpoints and never displayed by the UI.
  *
  * GET   /users                 → { users: User[] }
- * POST  /users                 { fullName, email, role, farmIds } → { user }   (sends an invitation)
+ * POST  /users                 { fullName, email, role, farmIds } → { user, temporaryPassword }
  * PATCH /users/:id             { role?, status?, farmIds? } → { user }
+ * POST  /users/:id/reset-password → { user, temporaryPassword }
+ *   (temporary passwords are shown once to the admin; the user must change it at first sign-in)
  * GET   /users/login-activity  → { logins: [{ id, userName, email, ip, userAgent, at }] }
  * GET   /users/failed-logins   → { attempts: [{ id, email, ip, reason, attempts, at }] }
- * User: { id, fullName, email, role: "admin"|"farm_manager"|"analyst", status: "active"|"invited"|"suspended",
- *         farms: string[], lastLoginAt, createdAt }
+ * User: { id, fullName, email, role: "admin"|"farm_manager"|"analyst"|"veterinarian", status: "active"|"suspended",
+ *         permissions: string[], farms: string[], farmIds: number[], mustChangePassword, lastLoginAt, createdAt }
  */
 import { api } from "./apiClient.js";
 import { readWithPreview } from "./dataSource.js";
@@ -22,3 +24,4 @@ export const listFailedLogins = () =>
 
 export const createUser = (user) => api.post("/users", user);
 export const updateUser = (id, changes) => api.patch(`/users/${encodeURIComponent(id)}`, changes);
+export const resetUserPassword = (id) => api.post(`/users/${encodeURIComponent(id)}/reset-password`);

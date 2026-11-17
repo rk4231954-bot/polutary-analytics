@@ -1,5 +1,6 @@
 /** Farms — list, search, filter, create, edit and delete farms. */
 import { confirmDeleteFarm, FARM_STATUSES, openFarmModal } from "../components/farmForms.js";
+import { can } from "../services/session.js";
 import { createDataTable } from "../components/dataTable.js";
 import { icon } from "../components/icons.js";
 import { errorState, loadingState, skeletonKpis } from "../components/states.js";
@@ -24,7 +25,9 @@ export default {
       html`${pageHeader({
           title: "Farms",
           subtitle: "Register farms, track capacity and monitor bird population across sites.",
-          actions: html`<button type="button" class="btn btn-primary" data-action="add">${icon("plus", { size: 16 })}Add farm</button>`,
+          actions: can("farms.create")
+            ? html`<button type="button" class="btn btn-primary" data-action="add">${icon("plus", { size: 16 })}Add farm</button>`
+            : "",
         })}
         <section class="pa-section" aria-label="Farm overview">
           <div class="pa-section-head">
@@ -123,8 +126,8 @@ export default {
             align: "actions",
             render: (f) => html`<div class="pa-row-actions">
               <a class="btn btn-ghost btn-icon btn-sm" href="#/farms/${f.id}" title="View farm" aria-label="View ${f.name}">${icon("eye", { size: 15 })}</a>
-              <button type="button" class="btn btn-ghost btn-icon btn-sm" data-action="edit" data-id="${f.id}" title="Edit farm" aria-label="Edit ${f.name}">${icon("pencil", { size: 15 })}</button>
-              <button type="button" class="btn btn-ghost btn-icon btn-sm" data-action="delete" data-id="${f.id}" title="Delete farm" aria-label="Delete ${f.name}">${icon("trash", { size: 15 })}</button>
+              ${can("farms.update") ? html`<button type="button" class="btn btn-ghost btn-icon btn-sm" data-action="edit" data-id="${f.id}" title="Edit farm" aria-label="Edit ${f.name}">${icon("pencil", { size: 15 })}</button>` : ""}
+              ${can("farms.delete") ? html`<button type="button" class="btn btn-ghost btn-icon btn-sm" data-action="delete" data-id="${f.id}" title="Delete farm" aria-label="Delete ${f.name}">${icon("trash", { size: 15 })}</button>` : ""}
             </div>`,
           },
         ],
@@ -180,7 +183,7 @@ export default {
 
     if (ctx.query.action === "new") {
       window.history.replaceState(null, "", "#/farms");
-      openFarmModal({ onSaved: load });
+      if (can("farms.create")) openFarmModal({ onSaved: load });
     }
     await load();
   },

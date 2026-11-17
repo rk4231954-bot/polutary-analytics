@@ -1,22 +1,37 @@
 /**
- * Authentication against the Flask API (session cookie). Never simulated —
- * there is no client-side login, token storage or password handling here.
+ * Authentication against the Flask API. Never simulated: there is no
+ * client-side login or password handling here. The session itself is an
+ * HttpOnly cookie set by the API; only the CSRF token is kept by the page.
  *
- * POST /auth/login     { email, password, remember } → { user }
- * POST /auth/register  { fullName, email, password } → { user }
- * POST /auth/logout    → 204
- * GET  /auth/me        → { user }  (401 when not signed in)
- * user: { id, fullName, email, role: "admin"|"farm_manager"|"analyst", farms: [...] }
+ * POST  /auth/register         { fullName, email, password } → 201 { user }
+ * POST  /auth/login            { email, password, remember } → { user, csrfToken }
+ * POST  /auth/logout           → 204
+ * GET   /auth/me               → { user, csrfToken }  (401 when not signed in)
+ * PATCH /auth/me               { fullName?, email? } → { user }
+ * POST  /auth/change-password  { currentPassword, newPassword } → { user, csrfToken }
+ *
+ * user: { id, fullName, email, role: "admin"|"farm_manager"|"analyst"|"veterinarian", roleLabel,
+ *         status, permissions: string[], farms: string[], farmIds: number[], mustChangePassword }
  */
-import { api } from "./apiClient.js";
+import { api, setCsrfToken } from "./apiClient.js";
 
-export const login = ({ email, password, remember = false }) => api.post("/auth/login", { email, password, remember });
+function keepCsrf(response) {
+  if (response?.csrfToken) setCsrfToken(response.csrfToken);
+  return response;
+}
+
+export const login = async ({ email, password, remember = false }) =>
+  keepCsrf(await api.post("/auth/login", { email, password, remember }));
 export const register = ({ fullName, email, password }) => api.post("/auth/register", { fullName, email, password });
-export const logout = () => api.post("/auth/logout");
-export const fetchCurrentUser = () => api.get("/auth/me", { timeoutMs: 8000 });
+export const logout = async () => {
+  try {
+    await api.post("/auth/logout");
+  } finally {
+    setCsrfToken(null);
+  }
+};
+export const fetchCurrentUser = async () => keepCsrf(await api.get("/auth/me", { timeoutMs: 8000 }));
 
-/** PATCH /auth/me { fullName, email } → { user } */
 export const updateProfile = ({ fullName, email }) => api.patch("/auth/me", { fullName, email });
-/** POST /auth/change-password { currentPassword, newPassword } → 204 */
-export const changePassword = ({ currentPassword, newPassword }) =>
-  api.post("/auth/change-password", { currentPassword, newPassword });
+export const changePassword = async ({ currentPassword, newPassword }) =>
+  keepCsrf(await api.post("/auth/change-password", { currentPassword, newPassword }));

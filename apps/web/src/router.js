@@ -100,6 +100,10 @@ async function handleRoute() {
       const next = encodeURIComponent(window.location.hash.slice(1) || DEFAULT_PATH);
       return navigate(`/login?next=${next}`, { replace: true });
     }
+    // Accounts created or reset by an administrator must set their own password first
+    // (the API refuses other requests until then).
+    if (user.mustChangePassword && path !== "/settings")
+      return navigate("/settings?tab=security", { replace: true });
   }
 
   // Mount (or switch) the layout.

@@ -1,6 +1,7 @@
 /** Poultry batches — list, search, filter, create, edit and delete flocks. */
 import { createDataTable } from "../components/dataTable.js";
 import { BATCH_STATUSES, confirmDeleteBatch, openBatchModal, POULTRY_TYPES } from "../components/farmForms.js";
+import { can } from "../services/session.js";
 import { icon } from "../components/icons.js";
 import { errorState, loadingState, skeletonKpis } from "../components/states.js";
 import { kpiCard, pageHeader, selectOptions, sourceBadge, statusBadge } from "../components/ui.js";
@@ -24,7 +25,9 @@ export default {
       html`${pageHeader({
           title: "Poultry Batches",
           subtitle: "Track every flock from placement to completion.",
-          actions: html`<button type="button" class="btn btn-primary" data-action="add">${icon("plus", { size: 16 })}Add batch</button>`,
+          actions: can("batches.manage")
+            ? html`<button type="button" class="btn btn-primary" data-action="add">${icon("plus", { size: 16 })}Add batch</button>`
+            : "",
         })}
         <section class="pa-section" aria-label="Batch overview">
           <div class="pa-section-head">
@@ -117,8 +120,10 @@ export default {
             label: html`<span class="visually-hidden">Actions</span>`,
             align: "actions",
             render: (b) => html`<div class="pa-row-actions">
-              <button type="button" class="btn btn-ghost btn-icon btn-sm" data-action="edit" data-id="${b.id}" title="Edit batch" aria-label="Edit ${b.code}">${icon("pencil", { size: 15 })}</button>
-              <button type="button" class="btn btn-ghost btn-icon btn-sm" data-action="delete" data-id="${b.id}" title="Delete batch" aria-label="Delete ${b.code}">${icon("trash", { size: 15 })}</button>
+              ${can("batches.manage")
+                ? html`<button type="button" class="btn btn-ghost btn-icon btn-sm" data-action="edit" data-id="${b.id}" title="Edit batch" aria-label="Edit ${b.code}">${icon("pencil", { size: 15 })}</button>
+                    <button type="button" class="btn btn-ghost btn-icon btn-sm" data-action="delete" data-id="${b.id}" title="Delete batch" aria-label="Delete ${b.code}">${icon("trash", { size: 15 })}</button>`
+                : ""}
             </div>`,
           },
         ],
@@ -188,6 +193,6 @@ export default {
     const wantsNew = ctx.query.action === "new";
     if (wantsNew) window.history.replaceState(null, "", "#/batches");
     await Promise.all([loadFarms(), load()]);
-    if (wantsNew && ctx.isCurrent()) openAdd();
+    if (wantsNew && ctx.isCurrent() && can("batches.manage")) openAdd();
   },
 };

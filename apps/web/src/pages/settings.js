@@ -148,6 +148,13 @@ export default {
             title: "Change password",
             subtitle: "Use a password you do not use anywhere else.",
             body: html`${preview ? html`<div class="mb-3">${signInRequired("change your password")}</div>` : ""}
+              ${!preview && getUser()?.mustChangePassword
+                ? html`<div class="mb-3">${callout({
+                    tone: "warning",
+                    title: "Choose a new password",
+                    message: "Your account uses a temporary password set by an administrator. Set your own password to continue.",
+                  })}</div>`
+                : ""}
               <form novalidate data-form="password" class="pa-settings__narrow">
                 <fieldset ${preview ? "disabled" : ""}>
                   ${passwordField({ name: "currentPassword", label: "Current password", autocomplete: "current-password", id: "pw-current" })}
@@ -166,7 +173,8 @@ export default {
               subtitle: "How this application protects your account.",
               body: html`<ul class="pa-settings__list">
                 <li>${icon("lock", { size: 16 })}<span>Passwords are hashed on the server and are never shown in the interface.</span></li>
-                <li>${icon("shield-check", { size: 16 })}<span>Sessions use a server-issued cookie; this browser stores no access tokens.</span></li>
+                <li>${icon("shield-check", { size: 16 })}<span>Sessions use a short-lived HttpOnly cookie that page scripts cannot read; changes also require a per-session CSRF token.</span></li>
+                <li>${icon("log-out", { size: 16 })}<span>Changing your password signs out your other devices.</span></li>
                 <li>${icon("scroll", { size: 16 })}<span>Sign-ins, failed attempts and role changes are recorded in the audit log.</span></li>
               </ul>`,
             })}
@@ -182,7 +190,14 @@ export default {
         const button = $('button[type="submit"]', form);
         setButtonLoading(button, true, "Updating…");
         try {
-          await changePassword({ currentPassword: values.currentPassword, newPassword: values.newPassword });
+          const response = await changePassword({ currentPassword: values.currentPassword, newPassword: values.newPassword });
+          const wasForced = getUser()?.mustChangePassword;
+          if (response?.user) setUser(response.user);
+          if (wasForced) {
+            toast.success("Password updated", "Your account is ready to use.");
+            ctx.navigate("/dashboard");
+            return;
+          }
           form.reset();
           form.elements.namedItem("newPassword").dispatchEvent(new Event("input"));
           toast.success("Password updated", "Use your new password next time you sign in.");

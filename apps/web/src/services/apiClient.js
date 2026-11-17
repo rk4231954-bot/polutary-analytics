@@ -2,7 +2,12 @@
  * Shared HTTP client for the Flask REST API.
  *
  * - Every request goes to `${config.apiBaseUrl}${path}`.
- * - Cookies are sent (`credentials: "include"`) for session authentication.
+ * - Cookies are sent (`credentials: "include"`): the session is an HttpOnly JWT
+ *   cookie the page can never read.
+ * - CSRF: state-changing requests carry the X-CSRF-TOKEN header (double-submit).
+ *   The token comes from the login and /auth/me responses (a frontend on another
+ *   domain such as Vercel cannot read the API's cookies) and is kept in
+ *   sessionStorage. It is not a credential on its own.
  * - Errors are normalised into ApiError so pages can render consistent states.
  * - Expected error body from the API: {"error": {"code": "...", "message": "...", "fields": {...}}}
  */
@@ -38,6 +43,30 @@ export class ApiError extends Error {
   get isNotFound() {
     return this.status === 404;
   }
+}
+
+const CSRF_KEY = "pa-csrf";
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/** Stores (or clears, with null) the CSRF token issued by the API. */
+export function setCsrfToken(token) {
+  try {
+    if (token) sessionStorage.setItem(CSRF_KEY, token);
+    else sessionStorage.removeItem(CSRF_KEY);
+  } catch {
+    /* storage disabled: requests will fail CSRF and ask the user to sign in again */
+  }
+}
+
+function csrfHeader(method) {
+  if (!UNSAFE_METHODS.has(method)) return {};
+  let token = null;
+  try {
+    token = sessionStorage.getItem(CSRF_KEY);
+  } catch {
+    /* ignore */
+  }
+  return token ? { "X-CSRF-TOKEN": token } : {};
 }
 
 const unauthorizedListeners = new Set();
@@ -102,6 +131,7 @@ export async function request(method, path, options = {}) {
         Accept: "application/json",
         ...(body !== undefined && !isForm ? { "Content-Type": "application/json" } : {}),
         "X-Requested-With": "XMLHttpRequest",
+        ...csrfHeader(method),
       },
       body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
       signal: controller.signal,
@@ -159,6 +189,7 @@ export function uploadWithProgress(path, formData, { onProgress, signal } = {}) 
     xhr.withCredentials = true;
     xhr.setRequestHeader("Accept", "application/json");
     xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+    for (const [name, value] of Object.entries(csrfHeader("POST"))) xhr.setRequestHeader(name, value);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
     };

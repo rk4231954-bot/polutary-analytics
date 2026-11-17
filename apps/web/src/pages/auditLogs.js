@@ -19,6 +19,8 @@ const ACTION_CATEGORIES = [
   { value: "user", label: "Users & roles" },
   { value: "farm", label: "Farms" },
   { value: "batch", label: "Batches" },
+  { value: "inspection", label: "Inspections" },
+  { value: "access", label: "Access control" },
   { value: "reading", label: "Data collection" },
   { value: "dataset", label: "Datasets" },
   { value: "prediction", label: "Predictions" },

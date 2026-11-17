@@ -2,6 +2,7 @@
 import { barChart, chartCanvas, colors, hasData, lineChart } from "../charts/index.js";
 import { createDataTable } from "../components/dataTable.js";
 import { confirmDeleteFarm, openBatchModal, openFarmModal } from "../components/farmForms.js";
+import { can } from "../services/session.js";
 import { icon } from "../components/icons.js";
 import { emptyState, errorState, loadingState } from "../components/states.js";
 import { card, kpiCard, sourceBadge, statusBadge } from "../components/ui.js";
@@ -45,9 +46,9 @@ export default {
               </div>
             </div>
             <div class="pa-page-header__actions">
-              <button type="button" class="btn btn-secondary" data-action="add-batch">${icon("plus", { size: 16 })}Add batch</button>
-              <button type="button" class="btn btn-secondary" data-action="edit">${icon("pencil", { size: 16 })}Edit</button>
-              <button type="button" class="btn btn-outline-danger" data-action="delete">${icon("trash", { size: 16 })}Delete</button>
+              ${can("batches.manage") ? html`<button type="button" class="btn btn-secondary" data-action="add-batch">${icon("plus", { size: 16 })}Add batch</button>` : ""}
+              ${can("farms.update") ? html`<button type="button" class="btn btn-secondary" data-action="edit">${icon("pencil", { size: 16 })}Edit</button>` : ""}
+              ${can("farms.delete") ? html`<button type="button" class="btn btn-outline-danger" data-action="delete">${icon("trash", { size: 16 })}Delete</button>` : ""}
             </div>
           </header>
           <section class="pa-section pa-grid pa-grid--4 pa-fm-kpis" aria-label="Farm overview">

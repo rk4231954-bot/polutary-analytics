@@ -11,10 +11,12 @@
 import { config } from "../config.js";
 import { fetchCurrentUser, logout as apiLogout } from "./auth.js";
 
+/** Mirrors the server's roles (apps/api/app/services/permissions.py). The server enforces them. */
 export const ROLES = {
-  admin: { label: "Administrator", description: "Full access, including users, roles and system settings." },
-  farm_manager: { label: "Farm Manager", description: "Manages assigned farms, batches and data collection." },
-  analyst: { label: "Analyst", description: "Read access to analytics, predictions, Hive queries and reports." },
+  admin: { label: "Administrator", description: "Manages users, roles and farms; views all analytics and audit logs." },
+  farm_manager: { label: "Farm Manager", description: "Manages assigned farms and poultry batches; views farm analytics." },
+  analyst: { label: "Analyst", description: "Reads permitted analytical data for assigned farms and generates reports." },
+  veterinarian: { label: "Veterinary User", description: "Views assigned farm health indicators and records inspections." },
 };
 
 const PREVIEW_USER = Object.freeze({
@@ -84,4 +86,14 @@ export function clearPreviewOptOut() {
 
 export function hasRole(...roles) {
   return Boolean(currentUser?.role && roles.includes(currentUser.role));
+}
+
+/**
+ * Whether to offer an action in the UI. Signed-in users: the permission list sent
+ * by the API. Preview visitors: true (forms are shown, but saving still needs the API).
+ * This only hides buttons; the API checks every request itself.
+ */
+export function can(permission) {
+  if (!currentUser || currentUser.isPreview) return true;
+  return Boolean(currentUser.permissions?.includes(permission));
 }

@@ -1,6 +1,6 @@
 /**
  * Sign-in page. Authenticates against the real Flask API (POST /auth/login).
- * No credentials are stored client-side; the server sets a session cookie.
+ * No credentials are stored client-side; the server sets an HttpOnly session cookie.
  */
 import { config } from "../config.js";
 import { icon } from "../components/icons.js";
@@ -26,6 +26,7 @@ function errorMessage(error) {
   if (error?.isNetworkError || error?.code === "BAD_RESPONSE")
     return "The authentication service is unreachable. Make sure the Flask API is running, then try again.";
   if (error?.status === 401 || error?.status === 400) return "Incorrect email or password.";
+  if (error?.code === "ACCOUNT_SUSPENDED") return error.message;
   if (error?.status === 423 || error?.status === 429)
     return error.message || "Too many attempts. Please wait before trying again.";
   if (error?.status === 404) return "Sign-in is not available yet: the authentication API has not been implemented.";

@@ -119,10 +119,14 @@ function topbarMarkup() {
 
 function previewBanner() {
   if (!config.demoMode) return "";
+  const user = getUser();
+  const signedIn = user && !user.isPreview;
   return html`<div class="pa-preview-banner" role="note">
     ${icon("info", { size: 16 })}
     <span><strong>Preview mode.</strong> Views marked ${sampleBadge("Sample data")} show illustrative values, not real farm measurements.
-    <span class="pa-hide-sm">Saving, uploads, Hive queries and model results require the Flask API.</span></span>
+    <span class="pa-hide-sm">${signedIn
+      ? "Farms, batches, users and audit logs use the real API; features not built yet fall back to labelled samples."
+      : "Saving, uploads, Hive queries and model results require the Flask API."}</span></span>
   </div>`;
 }
 

@@ -11,18 +11,20 @@ import { toast } from "../components/toast.js";
 import { callout, pageHeader, selectOptions, sourceBadge, statusBadge } from "../components/ui.js";
 import { listFarms } from "../services/farms.js";
 import { ROLES } from "../services/session.js";
-import { createUser, listFailedLogins, listLoginActivity, listUsers, updateUser } from "../services/users.js";
+import { createUser, listFailedLogins, listLoginActivity, listUsers, resetUserPassword, updateUser } from "../services/users.js";
 import { $, $$, debounce, html, on, setHtml } from "../utils/dom.js";
 import { formatDateTime, formatNumber, formatRelative, initials } from "../utils/format.js";
 import { applyServerErrors, liveValidate, rules, validateForm } from "../utils/validation.js";
 import "../styles/pages/users.css";
 
+// Summary of the server-side permissions (apps/api/app/services/permissions.py).
 const PERMISSIONS = {
-  admin: ["Manage users, roles and farm assignments", "Access all farms and datasets", "Configure system settings", "Review audit logs and security events"],
-  farm_manager: ["Manage assigned farms and batches", "Record daily readings and upload datasets", "View analytics and predictions for assigned farms"],
-  analyst: ["View analytics and predictions", "Run HiveQL queries on the analytical store", "Export CSV and PDF reports"],
+  admin: ["Manage users, roles and farm assignments", "Create, edit and delete any farm", "Access all farms and analytics", "Review audit logs and security events"],
+  farm_manager: ["Create farms and edit assigned farms", "Manage poultry batches on assigned farms", "View farm analytics and health inspections"],
+  analyst: ["Read analytical data for assigned farms", "Generate reports", "No changes to farms or batches"],
+  veterinarian: ["View health indicators for assigned farms", "Record inspection observations", "Read-only access to farms and batches"],
 };
-const ROLE_ICONS = { admin: "shield-check", farm_manager: "warehouse", analyst: "bar-chart" };
+const ROLE_ICONS = { admin: "shield-check", farm_manager: "warehouse", analyst: "bar-chart", veterinarian: "heart-pulse" };
 const ROLE_OPTIONS = Object.entries(ROLES).map(([value, r]) => ({ value, label: r.label }));
 const STATUS_OPTIONS = [
   { value: "active", label: "Active" },
@@ -40,13 +42,13 @@ function farmsCell(user) {
   return html`<span class="pa-users-farms" title="${user.farms.join(", ")}">${first}${rest.length ? html` <span class="pa-badge pa-badge--neutral">+${rest.length}</span>` : ""}</span>`;
 }
 
-function farmChecklist(farms, selectedNames = []) {
+function farmChecklist(farms, selectedIds = []) {
   if (farms === null) return html`<p class="pa-text-sm pa-text-2 mb-0">${icon("cloud-off", { size: 14 })} Farm list unavailable — farms can be assigned later.</p>`;
   if (!farms.length) return html`<p class="pa-text-sm pa-text-2 mb-0">No farms registered yet.</p>`;
   return html`<div class="pa-check-list" role="group" aria-label="Assigned farms">
     ${farms.map(
       (f) => html`<label class="form-check pa-check-list__item">
-        <input class="form-check-input" type="checkbox" name="farmIds" value="${f.id}" ${selectedNames.includes(f.name) ? "checked" : ""} />
+        <input class="form-check-input" type="checkbox" name="farmIds" value="${f.id}" ${selectedIds.map(String).includes(String(f.id)) ? "checked" : ""} />
         <span class="form-check-label">${f.name}</span>
       </label>`,
     )}
@@ -54,6 +56,32 @@ function farmChecklist(farms, selectedNames = []) {
 }
 
 const selectedFarmIds = (form) => $$('input[name="farmIds"]:checked', form).map((i) => Number(i.value) || i.value);
+
+/** Shows a temporary password exactly once. It is never stored by the page. */
+function showTemporaryPassword(user, password, { reset = false } = {}) {
+  const { el } = openFormModal({
+    title: reset ? "Password reset" : "Account created",
+    subtitle: `${user.fullName} · ${user.email}`,
+    cancelLabel: "Done",
+    body: html`<p class="pa-text-2">
+        Give this temporary password to ${user.fullName} through a secure channel. It is shown only once;
+        they must choose their own password when they sign in.
+      </p>
+      <label class="form-label" for="temp-password">Temporary password</label>
+      <div class="input-group">
+        <input class="form-control pa-mono" id="temp-password" value="${password}" readonly autocomplete="off" spellcheck="false" />
+        <button type="button" class="btn btn-secondary" data-action="copy-temp">${icon("copy", { size: 16 })}Copy</button>
+      </div>`,
+  });
+  el.querySelector('[data-action="copy-temp"]').addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(password);
+      toast.success("Copied", "Temporary password copied to the clipboard.");
+    } catch {
+      el.querySelector("#temp-password").select();
+    }
+  });
+}
 
 export default {
   title: "Users & Roles",
@@ -73,7 +101,7 @@ export default {
         ${canManage ? "" : html`<div class="mb-4">${callout({ tone: "info", title: "Read-only", message: "Only administrators can add users or change roles." })}</div>`}
         <section class="pa-section" aria-labelledby="roles-heading">
           <div class="pa-section-head"><h2 class="pa-section-title" id="roles-heading">Roles</h2></div>
-          <div class="pa-grid pa-grid--3" data-roles></div>
+          <div class="pa-grid pa-grid--2" data-roles></div>
         </section>
         <section class="pa-card" aria-label="Accounts and sign-in activity">
           <div class="pa-users-tabs">
@@ -175,6 +203,7 @@ export default {
             align: "actions",
             render: (u) => html`<div class="d-inline-flex gap-1">
               <button type="button" class="btn btn-ghost btn-icon btn-sm" data-edit="${u.id}" aria-label="Edit ${u.fullName}" title="Edit role and access" ${canManage ? "" : "disabled"}>${icon("pencil", { size: 14 })}</button>
+              <button type="button" class="btn btn-ghost btn-icon btn-sm" data-reset="${u.id}" aria-label="Reset password for ${u.fullName}" title="Reset password" ${canManage && u.id !== ctx.user?.id ? "" : "disabled"}>${icon("key", { size: 14 })}</button>
               ${u.status === "suspended"
                 ? html`<button type="button" class="btn btn-ghost btn-icon btn-sm" data-reactivate="${u.id}" aria-label="Reactivate ${u.fullName}" title="Reactivate" ${canManage ? "" : "disabled"}>${icon("refresh", { size: 14 })}</button>`
                 : html`<button type="button" class="btn btn-ghost btn-icon btn-sm pa-users-danger" data-deactivate="${u.id}" aria-label="Deactivate ${u.fullName}" title="Deactivate" ${canManage ? "" : "disabled"}>${icon("x-circle", { size: 14 })}</button>`}
@@ -300,7 +329,7 @@ export default {
             <legend class="form-label">Assigned farms</legend>
             ${farmChecklist(farms)}
           </fieldset>`,
-        footerNote: "No password is set here. The account holder sets their own password.",
+        footerNote: "A one-time temporary password is generated; the user must change it at first sign-in.",
         onOpen: (el) => {
           const form = $("form", el);
           liveValidate(form, USER_RULES);
@@ -312,8 +341,9 @@ export default {
           const { valid, values } = validateForm(form, USER_RULES);
           if (!valid) return false;
           try {
-            await createUser({ fullName: values.fullName, email: values.email, role: values.role, farmIds: selectedFarmIds(form) });
+            const result = await createUser({ fullName: values.fullName, email: values.email, role: values.role, farmIds: selectedFarmIds(form) });
             toast.success("User added", `${values.fullName} now has ${ROLES[values.role].label} access.`);
+            form.closest(".modal").addEventListener("hidden.bs.modal", () => showTemporaryPassword(result.user, result.temporaryPassword), { once: true });
             loadUsers();
             return true;
           } catch (error) {
@@ -346,7 +376,7 @@ export default {
           </div>
           <fieldset>
             <legend class="form-label">Assigned farms</legend>
-            ${farmChecklist(farms, user.farms || [])}
+            ${farmChecklist(farms, user.farmIds || [])}
           </fieldset>`,
         footerNote: "Role changes are recorded in the audit log.",
         onSubmit: async (form) => {
@@ -385,6 +415,23 @@ export default {
       }
     }
 
+    async function resetPassword(user) {
+      const ok = await confirmDialog({
+        title: "Reset password?",
+        message: `${user.fullName} will be signed out everywhere and must sign in with a new temporary password.`,
+        confirmLabel: "Reset password",
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        const result = await resetUserPassword(user.id);
+        showTemporaryPassword(result.user, result.temporaryPassword, { reset: true });
+        loadUsers();
+      } catch (error) {
+        toast.apiError(error, "Could not reset password");
+      }
+    }
+
     const findUser = (id) => state.users.find((u) => String(u.id) === String(id));
     const applySearch = debounce((value) => {
       state.search = value;
@@ -408,6 +455,7 @@ export default {
       on(root, "click", '[data-action="invite"]', () => openInvite()),
       on(root, "click", "[data-edit]", (_e, b) => findUser(b.dataset.edit) && openEdit(findUser(b.dataset.edit))),
       on(root, "click", "[data-deactivate]", (_e, b) => findUser(b.dataset.deactivate) && setStatus(findUser(b.dataset.deactivate), "suspended")),
+      on(root, "click", "[data-reset]", (_e, b) => findUser(b.dataset.reset) && resetPassword(findUser(b.dataset.reset))),
       on(root, "click", "[data-reactivate]", (_e, b) => findUser(b.dataset.reactivate) && setStatus(findUser(b.dataset.reactivate), "active")),
       on(root, "click", '[data-action="retry"]', () => showTab(state.tab)),
     ];
