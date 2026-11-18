@@ -53,7 +53,7 @@ const STATUS_TONES = {
   active: "success", healthy: "success", success: "success", completed: "neutral", connected: "success", ok: "success",
   online: "success", stored: "success", available: "success", verified: "success", enabled: "success",
   warning: "warning", maintenance: "warning", pending: "warning", planned: "info", processing: "info", running: "info",
-  queued: "info", validating: "info", info: "info", invited: "info",
+  queued: "info", validating: "info", uploaded: "info", info: "info", invited: "info", processed: "success",
   inactive: "neutral", archived: "neutral", disabled: "neutral", unknown: "neutral", "not configured": "neutral",
   error: "danger", failed: "danger", danger: "danger", critical: "danger", offline: "danger", disconnected: "danger",
   locked: "danger", suspended: "danger", high: "danger", medium: "warning", low: "success",

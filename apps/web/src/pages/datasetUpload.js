@@ -1,20 +1,23 @@
 /**
- * Dataset Upload — CSV ingestion.
+ * Dataset Upload — CSV ingestion (stage 6).
  *
  * Client side (real, from the selected file): parsing, preview, column
  * mapping, missing/duplicate/invalid summaries. These are pre-upload checks.
- * Server side (API only, never simulated): upload, validation, preprocessing,
- * HDFS storage and Hive table availability. Pipeline steps only turn complete
- * when the Flask API reports them.
+ * Server side (Flask API, never simulated): upload, validation, preprocessing
+ * and local storage of the processed file. HDFS (stage 7) and Hive (stage 8)
+ * steps stay pending until the API reports them complete.
  */
 import { config } from "../config.js";
 import { icon } from "../components/icons.js";
+import { datasetReportCard, previewTable } from "../components/datasetReport.js";
 import { emptyState, errorState, loadingState } from "../components/states.js";
 import { createDataTable } from "../components/dataTable.js";
+import { confirmDialog } from "../components/modal.js";
 import { toast } from "../components/toast.js";
 import { callout, card, pageHeader, statusBadge } from "../components/ui.js";
-import { getDataset, listDatasets, uploadDataset } from "../services/datasets.js";
+import { deleteDataset, getDataset, getDatasetPreview, listDatasets, uploadDataset } from "../services/datasets.js";
 import { listFarms } from "../services/farms.js";
+import { can } from "../services/session.js";
 import { parseCsv } from "../utils/csv.js";
 import { autoMapColumns, EXPECTED_FIELDS, isUploadReady, profileDataset } from "../utils/datasetProfile.js";
 import { $, html, on, setHtml } from "../utils/dom.js";
@@ -22,6 +25,7 @@ import { formatBytes, formatDateTime, formatNumber, formatPercent, formatRelativ
 import "../styles/pages/upload.css";
 
 const PREVIEW_ROWS = 20;
+const SERVER_PREVIEW_ROWS = 25;
 const POLL_MS = 3000;
 const STAGES = [
   { key: "uploaded", label: "Uploaded", hint: "File received by the API" },
@@ -30,28 +34,31 @@ const STAGES = [
   { key: "hdfs", label: "Stored in HDFS", hint: "Written to Hadoop" },
   { key: "hive", label: "Available in Hive", hint: "Queryable with HiveQL" },
 ];
-const TERMINAL = new Set(["available", "failed"]);
+// "processed" is final for stage 6: the file is ready for HDFS, which is not built yet.
+const TERMINAL = new Set(["processed", "available", "failed"]);
 
 function typeLabel(field) {
-  const t = { date: "Date (YYYY-MM-DD)", string: "Text", number: "Number", integer: "Whole number" }[field.type];
+  const t = { date: "Date (YYYY-MM-DD)", code: "Code (e.g. F-001)", number: "Number", integer: "Whole number" }[field.type];
   return field.unit ? `${t} · ${field.unit}` : t;
 }
 
 function stepper(dataset) {
   const stages = dataset?.stages || {};
   const failed = dataset?.status === "failed";
-  const firstPending = STAGES.findIndex((s) => !stages[s.key]);
+  const finished = TERMINAL.has(dataset?.status) && !failed;
+  // A finished dataset has no step "in progress": later steps are simply not built yet.
+  const firstPending = finished ? -1 : STAGES.findIndex((s) => !stages[s.key]);
   return html`<ol class="pa-steps" aria-label="Ingestion pipeline">
     ${STAGES.map((s, i) => {
       const done = Boolean(stages[s.key]);
       const isCurrent = dataset && i === firstPending;
       const cls = done ? "is-done" : isCurrent ? (failed ? "is-error" : "is-active") : "";
       const marker = done ? icon("check", { size: 14, strokeWidth: 2.5 }) : isCurrent && failed ? icon("x", { size: 14, strokeWidth: 2.5 }) : String(i + 1);
-      const state = done ? "complete" : isCurrent ? (failed ? "failed" : "in progress") : "pending";
+      const state = done ? "complete" : isCurrent ? (failed ? "failed" : "in progress") : finished ? "not built yet" : "pending";
       return html`<li class="pa-step ${cls}" aria-label="${s.label}: ${state}">
         <span class="pa-step__marker">${marker}</span>
         <span class="pa-step__label">${s.label}</span>
-        <span class="pa-step__hint">${isCurrent && failed ? "Failed" : s.hint}</span>
+        <span class="pa-step__hint">${isCurrent && failed ? "Failed" : finished && !done ? "Next project stage" : s.hint}</span>
       </li>`;
     })}
   </ol>`;
@@ -97,23 +104,25 @@ export default {
             title: "File requirements",
             icon: "info",
             body: html`<ul class="pa-upload-reqs">
-                <li>${icon("check", { size: 14 })}CSV format (.csv), UTF-8, with a header row</li>
-                <li>${icon("check", { size: 14 })}Maximum size ${config.maxUploadMb} MB</li>
-                <li>${icon("check", { size: 14 })}Dates as ISO <span class="pa-mono">YYYY-MM-DD</span></li>
-                <li>${icon("check", { size: 14 })}Required columns: date, farm code, batch code</li>
-                <li>${icon("check", { size: 14 })}Comma, semicolon or tab delimiters are detected</li>
+                <li>${icon("check", { size: 14 })}<span>CSV format (.csv), UTF-8, with a header row</span></li>
+                <li>${icon("check", { size: 14 })}<span>Maximum size ${config.maxUploadMb} MB</span></li>
+                <li>${icon("check", { size: 14 })}<span>Dates as ISO <span class="pa-mono">YYYY-MM-DD</span></span></li>
+                <li>${icon("check", { size: 14 })}<span>Required columns: <span class="pa-mono">date</span>, <span class="pa-mono">farm_code</span>, <span class="pa-mono">batch_code</span> (one row per batch per day)</span></li>
+                <li>${icon("check", { size: 14 })}<span>Farm and batch codes: 2–20 letters, numbers or hyphens</span></li>
+                <li>${icon("check", { size: 14 })}<span>Comma, semicolon, tab or pipe delimiters are detected</span></li>
               </ul>
               ${callout({
                 tone: "info",
-                title: "Provisional schema",
-                message: "The expected fields are provisional until Stage 6 (CSV ingestion). Checks on this page run in your browser; the server re-validates every file.",
+                title: "Checked twice",
+                message: "This page checks the file in your browser first. The server then validates every row again; rows with errors are left out and listed, and missing readings stay empty — nothing is guessed or filled in.",
               })}`,
           })}
         </div>
+        <div data-report></div>
         <div data-analysis></div>
         ${card({
           title: "Recent uploads",
-          subtitle: "Datasets submitted to the ingestion API",
+          subtitle: "Datasets submitted to the ingestion API · select a row to see its report",
           icon: "history",
           actions: html`<button type="button" class="btn btn-ghost btn-sm" data-action="reload-recent">${icon("refresh", { size: 14 })}Refresh</button>`,
           body: html`<div data-recent>${loadingState("Loading uploads…", { compact: true })}</div>`,
@@ -346,6 +355,13 @@ export default {
     }
 
     function uploadCard() {
+      if (!can("datasets.upload")) {
+        return card({
+          title: "Upload for ingestion",
+          icon: "upload",
+          body: callout({ tone: "info", title: "View only", message: "Your role can view uploaded datasets but not upload new ones. Ask a farm manager or administrator." }),
+        });
+      }
       const ready = isUploadReady(state.profile);
       const farmOptions = state.farms?.source === "api" ? state.farms.data : null;
       const warnings = state.profile.totalInvalid + state.profile.totalMissingCells + state.profile.duplicates.count;
@@ -366,7 +382,7 @@ export default {
             </div>
             <div class="pa-upload-submit">
               ${warnings > 0 && ready
-                ? html`<div class="pa-text-sm pa-text-2 mb-2">${icon("info", { size: 14 })} The server decides how missing, duplicate and invalid values are handled during preprocessing.</div>`
+                ? html`<div class="pa-text-sm pa-text-2 mb-2">${icon("info", { size: 14 })} Rows with invalid values will be rejected by the server and listed in the report; missing readings stay empty.</div>`
                 : ""}
               <div class="d-flex gap-2 flex-wrap">
                 <button type="button" class="btn btn-primary" data-action="upload" ${!ready || state.uploading ? "disabled" : ""} ${reason ? html`title="${reason}"` : ""}>
@@ -410,13 +426,74 @@ export default {
           detail,
           html`<dl class="pa-dl mt-4">
             <dt>Dataset</dt><dd>${d.filename ?? "—"} ${d.id !== undefined ? html`<span class="pa-text-2 pa-mono">#${d.id}</span>` : ""}</dd>
-            ${d.rowCount !== undefined && d.rowCount !== null ? html`<dt>Rows accepted</dt><dd>${formatNumber(d.rowCount)}</dd>` : ""}
+            ${d.rowCount !== undefined && d.rowCount !== null ? html`<dt>Rows accepted</dt><dd>${formatNumber(d.rowCount)}${d.totalRows ? ` of ${formatNumber(d.totalRows)}` : ""}</dd>` : ""}
+            ${d.processedFile ? html`<dt>Processed file</dt><dd class="pa-mono">${d.processedFile}</dd>` : ""}
             ${d.hdfsPath ? html`<dt>HDFS path</dt><dd class="pa-mono">${d.hdfsPath}</dd>` : ""}
             ${d.hiveTable ? html`<dt>Hive table</dt><dd class="pa-mono">${d.hiveTable}</dd>` : ""}
             ${d.error ? html`<dt>Error</dt><dd class="text-danger">${d.error}</dd>` : ""}
           </dl>`,
         );
       } else setHtml(detail, "");
+      renderReport();
+    }
+
+    // -------------------------------------------------------- server report
+    function renderReport() {
+      const holder = $("[data-report]", root);
+      const d = state.dataset;
+      if (!d || !d.report) return setHtml(holder, "");
+      setHtml(holder, datasetReportCard(d, { canDelete: can("datasets.delete") }));
+      if (d.status === "processed") loadPreview("processed", 0);
+      if (d.hasRejectedRows) loadPreview("rejected", 0);
+    }
+
+    async function loadPreview(kind, offset) {
+      const holder = $(`[data-preview="${kind}"]`, root);
+      const d = state.dataset;
+      if (!holder || !d) return;
+      setHtml(holder, loadingState("Loading rows…", { compact: true }));
+      try {
+        const { data } = await getDatasetPreview(d.id, { kind, offset, limit: SERVER_PREVIEW_ROWS });
+        if (!ctx.isCurrent() || state.dataset?.id !== d.id) return;
+        const title = kind === "processed" ? "Processed dataset preview" : "Rejected rows (left out of the processed file)";
+        setHtml(holder, previewTable(data, { title, limit: SERVER_PREVIEW_ROWS }));
+      } catch (error) {
+        if (ctx.isCurrent()) setHtml(holder, errorState(error, { compact: true, retry: false }));
+      }
+    }
+
+    async function openDataset(id) {
+      stopPolling();
+      try {
+        const { data } = await getDataset(id);
+        if (!ctx.isCurrent()) return;
+        state.dataset = data;
+        state.uploadError = null;
+        renderPipeline();
+        $("[data-report]", root)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (error) {
+        if (ctx.isCurrent()) toast.apiError(error, "Could not load the dataset");
+      }
+    }
+
+    async function removeDataset(id) {
+      const d = state.dataset;
+      const ok = await confirmDialog({
+        title: "Delete dataset?",
+        message: `This permanently deletes “${d?.filename ?? `dataset #${id}`}”, its validation report and its stored files.`,
+        confirmLabel: "Delete dataset",
+        danger: true,
+      });
+      if (!ok || !ctx.isCurrent()) return;
+      try {
+        await deleteDataset(id);
+        toast.success("Dataset deleted");
+        state.dataset = null;
+        renderPipeline();
+        loadRecent();
+      } catch (error) {
+        toast.apiError(error, "Could not delete the dataset");
+      }
     }
 
     function stopPolling() {
@@ -477,7 +554,12 @@ export default {
         });
         if (!ctx.isCurrent()) return;
         state.dataset = dataset;
-        toast.success("Upload received", "The backend is validating and processing the dataset.");
+        if (dataset.status === "processed") {
+          const rejected = dataset.rejectedRows ? `; ${formatNumber(dataset.rejectedRows)} rejected` : "";
+          toast.success("Dataset processed", `${formatNumber(dataset.rowCount)} valid rows saved${rejected}. See the validation report.`);
+        } else if (dataset.status === "failed") {
+          toast.error("Dataset not processed", dataset.error || "See the validation report for details.");
+        }
         renderPipeline();
         loadRecent();
         poll();
@@ -514,12 +596,14 @@ export default {
           rows: data,
           pageSize: 8,
           caption: "Recent dataset uploads",
+          onRowClick: (d) => openDataset(d.id),
           columns: [
             { key: "filename", label: "File", sortable: true, render: (d) => html`<span class="pa-cell-primary">${d.filename}</span><span class="pa-cell-secondary">${d.uploadedBy ?? ""}</span>` },
             { key: "status", label: "Status", sortable: true, render: (d) => statusBadge(d.status) },
             { key: "rowCount", label: "Rows", sortable: true, align: "num", render: (d) => formatNumber(d.rowCount) },
             { key: "sizeBytes", label: "Size", sortable: true, align: "num", render: (d) => formatBytes(d.sizeBytes) },
-            { key: "hiveTable", label: "Hive table", render: (d) => (d.hiveTable ? html`<span class="pa-mono">${d.hiveTable}</span>` : "—") },
+            { key: "farmName", label: "Farm", sortable: true, render: (d) => d.farmName ?? "—" },
+            { key: "rejectedRows", label: "Rejected", sortable: true, align: "num", render: (d) => (d.rejectedRows === null || d.rejectedRows === undefined ? "—" : formatNumber(d.rejectedRows)) },
             { key: "createdAt", label: "Uploaded", sortable: true, render: (d) => html`<span title="${formatDateTime(d.createdAt)}">${formatRelative(d.createdAt)}</span>` },
           ],
           empty: { icon: "upload-cloud", title: "No uploads yet", message: "Datasets you upload will appear here with their ingestion status." },
@@ -559,6 +643,8 @@ export default {
       on(root, "click", "[data-action=upload]", startUpload),
       on(root, "click", "[data-action=cancel-upload]", () => state.abort?.abort()),
       on(root, "click", "[data-action=reload-recent], [data-recent] [data-action=retry]", loadRecent),
+      on(root, "click", "[data-action=preview-page]", (_e, el) => loadPreview(el.dataset.kind, Number(el.dataset.offset) || 0)),
+      on(root, "click", "[data-action=delete-dataset]", (_e, el) => removeDataset(Number(el.dataset.id))),
     ];
     fileInput.addEventListener("change", () => acceptFile(fileInput.files?.[0]));
     // Prevent the browser from opening files dropped outside the dropzone.

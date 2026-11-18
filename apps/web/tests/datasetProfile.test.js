@@ -40,6 +40,14 @@ describe("helpers", () => {
     expect(checkValue(field("temperature_c"), "warm")).toBe("Not a number");
     expect(checkValue(field("date"), "2024-13-01")).toMatch(/date/);
   });
+
+  test("checkValue mirrors the server rules for codes and future dates", () => {
+    expect(checkValue(field("farm_code"), "F-001")).toBeNull();
+    expect(checkValue(field("batch_code"), "B 001")).toMatch(/letters, numbers or hyphens/);
+    expect(checkValue(field("batch_code"), "X")).toMatch(/letters, numbers or hyphens/);
+    expect(checkValue(field("date"), "2999-01-01")).toBe("Date is in the future");
+    expect(checkValue(field("date"), "2026-01-01")).toBeNull();
+  });
 });
 
 describe("autoMapColumns", () => {

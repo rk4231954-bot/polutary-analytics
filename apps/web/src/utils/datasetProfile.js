@@ -3,18 +3,18 @@
  * column mapping, missing values, duplicates and invalid readings.
  *
  * This is a pre-upload quality check only. The Flask API re-validates and
- * preprocesses every dataset (stage 6); its result is authoritative.
+ * preprocesses every dataset; its result is authoritative.
  *
- * The expected schema below is PROVISIONAL until stage 6 (CSV ingestion).
+ * The schema mirrors apps/api/app/services/csv_schema.py (keep them in sync).
  */
 
-/** @typedef {{key: string, label: string, type: "date"|"string"|"number"|"integer", required: boolean, min?: number, max?: number, unit?: string, aliases: string[]}} FieldSpec */
+/** @typedef {{key: string, label: string, type: "date"|"code"|"number"|"integer", required: boolean, min?: number, max?: number, unit?: string, aliases: string[]}} FieldSpec */
 
 /** @type {FieldSpec[]} */
 export const EXPECTED_FIELDS = [
   { key: "date", label: "Date", type: "date", required: true, aliases: ["record_date", "reading_date", "day", "timestamp"] },
-  { key: "farm_code", label: "Farm code", type: "string", required: true, aliases: ["farm", "farm_id", "farm_name"] },
-  { key: "batch_code", label: "Batch code", type: "string", required: true, aliases: ["batch", "batch_id", "flock", "flock_id", "flock_code"] },
+  { key: "farm_code", label: "Farm code", type: "code", required: true, aliases: ["farm", "farm_id", "farm_name"] },
+  { key: "batch_code", label: "Batch code", type: "code", required: true, aliases: ["batch", "batch_id", "flock", "flock_id", "flock_code"] },
   { key: "temperature_c", label: "Temperature", type: "number", required: false, min: -10, max: 60, unit: "°C", aliases: ["temperature", "temp", "temp_c", "temperature_celsius"] },
   { key: "humidity_pct", label: "Humidity", type: "number", required: false, min: 0, max: 100, unit: "%", aliases: ["humidity", "rh", "relative_humidity", "humidity_percent"] },
   { key: "feed_kg", label: "Feed", type: "number", required: false, min: 0, unit: "kg", aliases: ["feed", "feed_consumption", "feed_consumption_kg", "feed_intake_kg"] },
@@ -26,6 +26,8 @@ export const EXPECTED_FIELDS = [
 
 const MISSING_TOKENS = new Set(["", "na", "n/a", "null", "nan", "none", "-", "?"]);
 const MAX_EXAMPLES = 5;
+/** Same rule as farm and batch codes in the API. */
+const CODE_RE = /^[A-Za-z0-9-]{2,20}$/;
 
 /** "Temperature (°C)" → "temperature_c" */
 export function normaliseHeader(header) {
@@ -100,8 +102,12 @@ export function mappingIssues(mapping, headers) {
 /** Validates one non-missing value against a field spec. Returns a reason string or null. */
 export function checkValue(field, raw) {
   const value = String(raw).trim();
-  if (field.type === "date") return parseIsoDate(value) ? null : "Not a valid YYYY-MM-DD date";
-  if (field.type === "string") return value.length > 100 ? "Longer than 100 characters" : null;
+  if (field.type === "date") {
+    const date = parseIsoDate(value);
+    if (!date) return "Not a valid YYYY-MM-DD date";
+    return date.getTime() > Date.now() ? "Date is in the future" : null;
+  }
+  if (field.type === "code") return CODE_RE.test(value) ? null : "Use 2–20 letters, numbers or hyphens";
   const n = parseNumber(value);
   if (n === null) return "Not a number";
   if (field.type === "integer" && !Number.isInteger(n)) return "Not a whole number";
