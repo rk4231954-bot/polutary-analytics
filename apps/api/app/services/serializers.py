@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 
-from app.models import AuditLog, BatchInspection, Farm, PoultryBatch, User
+from app.models import AuditLog, BatchInspection, DatasetUpload, Farm, PoultryBatch, User
 from app.services.permissions import permissions_for
 from app.utils.time import iso, today
 
@@ -109,3 +109,55 @@ def audit_to_dict(entry: AuditLog) -> dict:
         "outcome": entry.outcome,
         "details": json.loads(entry.details) if entry.details else {},
     }
+
+
+def dataset_to_dict(dataset: DatasetUpload, *, detail: bool = False) -> dict:
+    processed = dataset.status == "processed"
+    data = {
+        "id": dataset.id,
+        "filename": dataset.original_filename,
+        "status": dataset.status,
+        "farmId": dataset.farm_id,
+        "farmName": dataset.farm.name if dataset.farm else None,
+        "farmCode": dataset.farm.code if dataset.farm else None,
+        # Each flag is true only when that step really happened. HDFS (stage 7) and
+        # Hive (stage 8) are not implemented yet, so they are always false here.
+        "stages": {
+            "uploaded": dataset.raw_path is not None,
+            "validated": processed,
+            "preprocessed": processed and dataset.processed_path is not None,
+            "hdfs": False,
+            "hive": False,
+        },
+        "readyForHdfs": processed,
+        "rowCount": dataset.accepted_rows,
+        "totalRows": dataset.total_rows,
+        "rejectedRows": dataset.rejected_rows,
+        "duplicateRows": dataset.duplicate_rows,
+        "errorCount": dataset.error_count,
+        "warningCount": dataset.warning_count,
+        "sizeBytes": dataset.size_bytes,
+        "uploadedBy": dataset.uploaded_by.full_name if dataset.uploaded_by else None,
+        "createdAt": iso(dataset.created_at),
+        "processedAt": iso(dataset.processed_at),
+        "hdfsPath": None,
+        "hiveTable": None,
+        "error": dataset.error,
+    }
+    if detail:
+        data.update(
+            sha256=dataset.sha256,
+            processedFile=f"data/{dataset.processed_path}" if dataset.processed_path else None,
+            hasRejectedRows=dataset.rejected_path is not None,
+            report=json.loads(dataset.report) if dataset.report else None,
+            history=[
+                {
+                    "stage": e.stage,
+                    "status": e.status,
+                    "message": e.message,
+                    "createdAt": iso(e.created_at),
+                }
+                for e in dataset.events
+            ],
+        )
+    return data

@@ -8,6 +8,10 @@ from __future__ import annotations
 
 import os
 from datetime import timedelta
+from pathlib import Path
+
+# Repository root (apps/api/app/config.py → parents[3]). Datasets live in <repo>/data by default.
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 WEAK_SECRETS = {"", "change-me", "changeme", "secret", "dev", "development"}
 
@@ -49,7 +53,12 @@ class BaseConfig:
         self.SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL", "sqlite:///polutary.sqlite3")
         self.SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-        self.MAX_CONTENT_LENGTH = _int("MAX_REQUEST_KB", 64) * 1024  # JSON API; uploads come later
+        # JSON requests. The CSV upload endpoint raises its own limit to MAX_UPLOAD_MB.
+        self.MAX_CONTENT_LENGTH = _int("MAX_REQUEST_KB", 64) * 1024
+        self.MAX_UPLOAD_MB = _int("MAX_UPLOAD_MB", 50)
+        # Uploaded and processed datasets: <DATA_DIR>/raw and <DATA_DIR>/processed.
+        # Kept outside every web-served directory; files are never served directly.
+        self.DATA_DIR = str(Path(os.environ.get("DATA_DIR") or REPO_ROOT / "data").resolve())
         self.CORS_ALLOWED_ORIGINS = _list("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
         self.TRUST_PROXY_COUNT = _int("TRUST_PROXY_COUNT", 0)
 
@@ -94,6 +103,11 @@ class BaseConfig:
             raise ConfigError("JWT_COOKIE_SAMESITE must be Lax, Strict or None.")
         if self.JWT_COOKIE_SAMESITE == "None" and not self.JWT_COOKIE_SECURE:
             raise ConfigError("JWT_COOKIE_SAMESITE=None requires JWT_COOKIE_SECURE=true (HTTPS).")
+        if not 1 <= self.MAX_UPLOAD_MB <= 500:
+            raise ConfigError("MAX_UPLOAD_MB must be between 1 and 500.")
+        web_dir = (REPO_ROOT / "apps" / "web").resolve()
+        if Path(self.DATA_DIR).is_relative_to(web_dir):
+            raise ConfigError("DATA_DIR must not be inside apps/web (it would be web-served).")
 
 
 class DevelopmentConfig(BaseConfig):

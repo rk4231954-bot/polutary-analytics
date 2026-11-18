@@ -12,6 +12,7 @@ from app.models import (
     HOUSING_TYPES,
     POULTRY_TYPES,
     BatchInspection,
+    DatasetUpload,
     Farm,
     FarmAssignment,
     PoultryBatch,
@@ -150,6 +151,16 @@ def delete_farm(user: User, farm: Farm) -> None:
             "FARM_HAS_ACTIVE_BATCHES",
             f"This farm has {active} active batch(es). "
             "Complete or remove them before deleting the farm.",
+        )
+    datasets = db.session.scalar(
+        select(func.count(DatasetUpload.id)).where(DatasetUpload.farm_id == farm.id)
+    )
+    if datasets:
+        raise ApiError(
+            409,
+            "FARM_HAS_DATASETS",
+            f"This farm has {datasets} uploaded dataset(s). "
+            "Delete them under Data Management before deleting the farm.",
         )
     audit_service.record(
         "farm.delete",

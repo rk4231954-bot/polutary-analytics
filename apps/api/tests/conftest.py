@@ -16,7 +16,12 @@ PASSWORD = "Str0ngPassw0rd"
 @pytest.fixture
 def app(tmp_path):
     app = create_app(
-        "testing", {"SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path / 'test.sqlite3'}"}
+        "testing",
+        {
+            "SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path / 'test.sqlite3'}",
+            # Uploaded/processed datasets go to a per-test folder, never the real data/.
+            "DATA_DIR": str(tmp_path / "data"),
+        },
     )
     yield app
     with app.app_context():

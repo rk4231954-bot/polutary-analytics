@@ -1,8 +1,10 @@
 # apps/api: Flask REST API
 
-Stage 3 backend: authentication, role-based access control, farms, poultry batches,
-health inspections and audit logging, stored in SQLite through SQLAlchemy.
-Hadoop/HDFS, Hive and ML arrive in later stages and are **not** part of this code yet.
+Authentication, role-based access control, farms, poultry batches, health inspections,
+audit logging (stage 3) and CSV dataset ingestion (stage 6: upload, validation, preprocessing,
+local storage), with application data in SQLite through SQLAlchemy.
+Hadoop/HDFS, Hive and ML arrive in later stages and are **not** part of this code yet: processed
+datasets are stored locally and marked *ready for HDFS*; nothing claims they are in HDFS or Hive.
 
 This is a standalone Python project (uv-managed). Bun is not needed to run it.
 
@@ -19,18 +21,22 @@ apps/api/
 │   ├── models/             SQLAlchemy models
 │   │   ├── user.py           Role, User, FarmAssignment
 │   │   ├── farm.py           Farm, PoultryBatch, BatchInspection
-│   │   └── audit.py          AuditLog (append-only), RevokedSession
+│   │   ├── audit.py          AuditLog (append-only), RevokedSession
+│   │   └── dataset.py        DatasetUpload, DatasetEvent (processing history)
 │   ├── routes/             one blueprint per domain (all under /api)
-│   │   ├── auth.py  users.py  farms.py  batches.py  audit.py  health.py
+│   │   ├── auth.py  users.py  farms.py  batches.py  datasets.py  audit.py  health.py
 │   ├── services/           business logic
 │   │   ├── auth_service.py   JWT cookie sessions, CSRF, sliding expiry, @auth_required
 │   │   ├── permissions.py    roles → permissions, farm-level access rules
 │   │   ├── farm_service.py   farm / batch / inspection rules
 │   │   ├── audit_service.py  audit entries (sensitive keys stripped)
+│   │   ├── csv_schema.py     daily-record CSV schema (fields, types, ranges, aliases)
+│   │   ├── csv_ingestion.py  CSV parsing, validation, preprocessing (pure, no Flask)
+│   │   ├── dataset_service.py upload checks, storage, SQLite metadata, history, audit
 │   │   ├── passwords.py      Argon2id hashing
 │   │   ├── rate_limit.py     login / registration throttling
 │   │   └── serializers.py    model → JSON (camelCase, no secrets)
-│   └── utils/              errors, validation, HTTP and time helpers
+│   └── utils/              errors, validation, HTTP, time and safe file-storage helpers
 ├── tests/                  pytest suite (temporary SQLite file per test)
 ├── instance/               SQLite database (git-ignored, created automatically)
 ├── pyproject.toml / uv.lock     pinned dependencies (source of truth)
@@ -102,6 +108,9 @@ After that, administrators manage roles from **Administration & Security → Use
 | `inspections.record` | ✔ | | | ✔ assigned |
 | `analytics.view` (stage 9+) | ✔ | ✔ | ✔ | |
 | `reports.generate` (stage 9+) | ✔ | | ✔ | |
+| `datasets.upload` (CSV ingestion) | ✔ all | ✔ assigned | | |
+| `datasets.view` (reports, previews, history) | ✔ all | ✔ assigned | ✔ assigned | |
+| `datasets.delete` | ✔ all | ✔ assigned | | |
 | Read farms & batches | all | assigned | assigned | assigned |
 
 ## Database schema (SQLite)
@@ -130,6 +139,14 @@ audit_logs         id PK · created_at INDEX · actor_user_id FK→users SET NUL
                    action · resource_type · resource_id · outcome CHECK(success|failure|denied)
                    ip_address · user_agent · details (JSON text) · INDEX(action, created_at)
 revoked_sessions   session_id PK · user_id FK→users CASCADE · revoked_at · expires_at INDEX
+dataset_uploads    id PK · farm_id FK→farms RESTRICT (null until resolved) · uploaded_by_id FK→users SET NULL
+                   original_filename (secure_filename, display only) · content_type · size_bytes · sha256 INDEX
+                   status CHECK(uploaded|validating|processing|processed|failed)
+                   total_rows · accepted_rows · rejected_rows · duplicate_rows · error_count · warning_count
+                   raw_path · processed_path · rejected_path (relative to DATA_DIR) · report (JSON) · error
+                   created_at · updated_at · processed_at · INDEX(farm_id, created_at)
+dataset_events     id PK · dataset_id FK→dataset_uploads CASCADE INDEX · stage · status
+                   CHECK(success|warning|failure) · message · created_at
 ```
 
 SQLite foreign keys are enabled on every connection. Set `DATABASE_URL` to any SQLAlchemy URL
@@ -153,7 +170,7 @@ All responses are JSON. Errors: `{"error": {"code", "message", "fields"?}}`.
 | POST | `/api/farms` | 🔒✎ `farms.create` | `{code, name, location, capacity, housingType, status, manager?}` → `201 {farm}` |
 | GET | `/api/farms/:id` | 🔒 farm access | → `{farm}` |
 | PUT | `/api/farms/:id` | 🔒✎ `farms.update` + access | full farm body → `{farm}` |
-| DELETE | `/api/farms/:id` | 🔒✎ `farms.delete` | → `204` · 409 `FARM_HAS_ACTIVE_BATCHES` |
+| DELETE | `/api/farms/:id` | 🔒✎ `farms.delete` | → `204` · 409 `FARM_HAS_ACTIVE_BATCHES` · 409 `FARM_HAS_DATASETS` |
 | GET | `/api/farms/:id/batches` | 🔒 farm access | → `{batches}` |
 | GET | `/api/batches?farm_id=&status=` | 🔒 | → `{batches}` (accessible farms only) |
 | POST | `/api/batches` | 🔒✎ `batches.manage` | `{code, farmId, poultryType, breed?, initialCount, startDate, status, endDate?}` → `201 {batch}` |
@@ -162,6 +179,11 @@ All responses are JSON. Errors: `{"error": {"code", "message", "fields"?}}`.
 | DELETE | `/api/batches/:id` | 🔒✎ `batches.manage` + access | → `204` · 409 `BATCH_ACTIVE` |
 | GET | `/api/batches/:id/inspections` | 🔒 `health.view` + access | → `{inspections}` |
 | POST | `/api/batches/:id/inspections` | 🔒✎ `inspections.record` + access | `{observedOn, healthStatus, observation}` → `201 {inspection}` |
+| POST | `/api/datasets` | 🔒✎ `datasets.upload` | multipart `file` (.csv), `mapping`? (JSON `{field: column}`; omitted = match by header), `farmId`? → `201 {dataset}` with `status` `processed` or `failed` + report · 400 `FILE_REQUIRED`/`EMPTY_FILE`/`VALIDATION_ERROR` · 413 `FILE_TOO_LARGE` · 415 `INVALID_FILE_TYPE` |
+| GET | `/api/datasets?limit=&farm_id=` | 🔒 `datasets.view` | → `{datasets}` (newest first, accessible farms only) |
+| GET | `/api/datasets/:id` | 🔒 `datasets.view` + access | → `{dataset}` with `report` (summary, errors, warnings, transformations) and `history` |
+| GET | `/api/datasets/:id/preview?kind=processed\|rejected&offset=&limit=` | 🔒 `datasets.view` + access | → `{preview: {columns, rows, total, offset}}` (limit ≤ 200; empty cells are `null`) |
+| DELETE | `/api/datasets/:id` | 🔒✎ `datasets.delete` + access | → `204` (record, history and stored files removed) |
 | GET | `/api/users` | 🔒 `users.manage` | → `{users}` |
 | POST | `/api/users` | 🔒✎ `users.manage` | `{fullName, email, role, farmIds}` → `201 {user, temporaryPassword}` |
 | PATCH | `/api/users/:id` | 🔒✎ `users.manage` | `{role?, status?, farmIds?}` → `{user}` · 400 `CANNOT_MODIFY_SELF` · 409 `LAST_ADMIN` |
@@ -176,7 +198,67 @@ other endpoint works (`403 PASSWORD_CHANGE_REQUIRED`).
 
 Audit actions: `auth.register|login|logout|password_change`, `user.create|role_change|status_change|
 farm_access_change|password_reset|profile_update|admin_bootstrap`, `farm.create|update|delete`,
-`batch.create|update|delete`, `inspection.create`, `access.denied`.
+`batch.create|update|delete`, `inspection.create`, `dataset.upload` (success, or failure with the
+reason, including refused files), `dataset.delete`, `access.denied`.
+
+## CSV dataset ingestion (stage 6)
+
+One row = one day of readings for one poultry batch. Headers are matched to fields by name
+(case, spaces and units are ignored, common aliases such as `Deaths` or `Temperature (°C)` are
+recognised) or by the `mapping` sent with the upload. Extra columns are ignored and reported.
+
+| Field | Required | Type | Rule | Meaning |
+|---|:-:|---|---|---|
+| `date` | ✔ | date | `YYYY-MM-DD` (a time part is dropped), real date, not in the future | Day of the readings |
+| `farm_code` | ✔ | code | 2–20 letters/digits/hyphens; a registered farm assigned to the uploader | Farm, e.g. `F-001` |
+| `batch_code` | ✔ | code | 2–20 letters/digits/hyphens (warning if not registered for the farm) | Flock/batch, e.g. `B-2026-07` |
+| `temperature_c` | | number | −10 to 60 | House temperature, °C |
+| `humidity_pct` | | number | 0 to 100 | Relative humidity, % |
+| `feed_kg` | | number | ≥ 0 | Feed consumed that day, kg |
+| `water_l` | | number | ≥ 0 | Water consumed that day, litres |
+| `mortality` | | integer | ≥ 0 | Birds that died that day |
+| `avg_weight_g` | | number | 0 to 10 000 | Average live weight per bird, g |
+| `bird_count` | | integer | ≥ 0 | Live birds at the end of the day |
+
+**File checks (refused, nothing stored):** `.csv` extension; MIME type in an allow-list
+(`text/csv`, `application/vnd.ms-excel`, `text/plain`, …); size ≤ `MAX_UPLOAD_MB`; not empty.
+With curl, send the type explicitly: `-F "file=@readings.csv;type=text/csv"`.
+
+**Whole-file errors (dataset `failed`, report kept):** not UTF-8, binary content, malformed
+quoting, no header or no data rows, a required column missing, a mapped column absent or used
+twice, duplicate header names, no valid rows left, or rows for several farms when no farm was
+selected.
+
+**Row errors (row left out, listed with line number and reason):** wrong number of fields,
+missing required value, invalid date/code/number, value out of range, decimal in a whole-number
+field, future date, farm code not the selected farm (or not one of the uploader's farms), and
+rows with the same date + farm + batch but different readings (all such rows are rejected,
+because neither can be chosen automatically).
+
+**Warnings (rows kept):** missing optional readings, blank lines, exact duplicate rows (first
+kept), batch codes not registered in the app, mortality higher than the bird count, and the same
+file already processed for the farm.
+
+**Preprocessing (every change is listed in the report):** trim spaces, treat `NA`, `null`,
+`n/a`, `nan`, `none`, `-`, `?` and empty cells as missing, upper-case codes, drop the time part
+of dates, write numbers in a standard form, rename columns to the field names, drop unmapped
+columns, remove exact duplicates, sort by date and batch. **Missing values stay empty; nothing
+is imputed, estimated or corrected.**
+
+**Storage** (`DATA_DIR`, default `<repo>/data`, git-ignored, never web-served; folder names use
+only numeric ids, in Hive partition style so stage 7 can copy them to HDFS unchanged):
+
+```
+data/raw/farm_id=<farm>/upload_id=<id>/original.csv        the file exactly as uploaded
+data/raw/farm_id=<farm>/upload_id=<id>/rejected_rows.csv   source_line, errors, raw_record
+data/raw/unassigned/upload_id=<id>/...                     farm could not be resolved
+data/processed/farm_id=<farm>/upload_id=<id>/records.csv   cleaned rows, fixed 11-column schema
+data/processed/farm_id=<farm>/upload_id=<id>/manifest.json columns + Hive types, row count, sha256
+```
+
+`records.csv`: UTF-8, comma-separated, header row, empty field = missing, columns `date,
+farm_code, batch_code, temperature_c, humidity_pct, feed_kg, water_l, mortality, avg_weight_g,
+bird_count, source_line` (`source_line` = line in the original upload).
 
 ## Connecting a deployed frontend (Vercel)
 

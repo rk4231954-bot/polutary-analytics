@@ -138,7 +138,7 @@ cd apps/api && uv run python run.py   # API on :5000 (needs SECRET_KEY in apps/a
 3. ✅ Flask backend scaffold (app factory, config, health endpoint, error handling)
 4. ✅ SQLite database (models, initialisation)
 5. ✅ Authentication + roles (stages 3–5 were delivered together as "Stage 3: backend")
-6. CSV ingestion (upload, validation, preprocessing)
+6. ✅ CSV ingestion (upload, validation, preprocessing)
 7. Hadoop integration (Docker Compose, HDFS writes via WebHDFS)
 8. Hive integration (PyHive connection, external tables over HDFS)
 9. HiveQL analytics (mortality, feed conversion, weight gain, production trends)

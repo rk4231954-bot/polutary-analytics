@@ -35,7 +35,8 @@ def test_role_permissions_are_exposed_to_the_frontend(as_role):
     }
     assert {"users.manage", "audit.view", "farms.delete"} <= perms["admin"]
     assert "batches.manage" in perms["farm_manager"] and "users.manage" not in perms["farm_manager"]
-    assert perms["analyst"] == {"analytics.view", "reports.generate"}
+    assert perms["analyst"] == {"analytics.view", "reports.generate", "datasets.view"}
+    assert {"datasets.upload", "datasets.delete"} <= perms["farm_manager"]
     assert perms["veterinarian"] == {"health.view", "inspections.record"}
 
 

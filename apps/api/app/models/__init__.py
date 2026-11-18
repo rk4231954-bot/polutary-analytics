@@ -3,6 +3,7 @@
 from sqlalchemy import Engine, event
 
 from app.models.audit import AUDIT_OUTCOMES, AuditLog, RevokedSession
+from app.models.dataset import DATASET_STATUSES, DatasetEvent, DatasetUpload
 from app.models.farm import (
     BATCH_STATUSES,
     FARM_STATUSES,
@@ -28,6 +29,7 @@ def _enable_sqlite_foreign_keys(dbapi_connection, _record) -> None:
 __all__ = [
     "AUDIT_OUTCOMES",
     "BATCH_STATUSES",
+    "DATASET_STATUSES",
     "FARM_STATUSES",
     "HEALTH_STATUSES",
     "HOUSING_TYPES",
@@ -35,6 +37,8 @@ __all__ = [
     "USER_STATUSES",
     "AuditLog",
     "BatchInspection",
+    "DatasetEvent",
+    "DatasetUpload",
     "Farm",
     "FarmAssignment",
     "PoultryBatch",

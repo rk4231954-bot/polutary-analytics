@@ -47,12 +47,24 @@ PERMISSIONS: dict[str, frozenset[str]] = {
             "inspections.record",
             "analytics.view",
             "reports.generate",
+            "datasets.upload",
+            "datasets.view",
+            "datasets.delete",
         }
     ),
     "farm_manager": frozenset(
-        {"farms.create", "farms.update", "batches.manage", "health.view", "analytics.view"}
+        {
+            "farms.create",
+            "farms.update",
+            "batches.manage",
+            "health.view",
+            "analytics.view",
+            "datasets.upload",
+            "datasets.view",
+            "datasets.delete",
+        }
     ),
-    "analyst": frozenset({"analytics.view", "reports.generate"}),
+    "analyst": frozenset({"analytics.view", "reports.generate", "datasets.view"}),
     "veterinarian": frozenset({"health.view", "inspections.record"}),
 }
 
