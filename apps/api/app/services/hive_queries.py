@@ -150,6 +150,78 @@ ORDER BY farm_id, batch_id, record_date
 LIMIT %(max_rows)s"""
 
 
+# Alert baselines: for each farm, a least-squares line is fitted to each metric over the
+# `baseline_days` days before the farm's latest record day (x = days relative to that
+# day, so the intercept is the value the trend predicts for the latest day). The spread
+# is the residual standard deviation, sqrt(SSE / (n - 2)). Fitting a trend matters
+# because feed per bird rises as birds grow, and house temperature and humidity are
+# often changed with flock age; a flat average would flag normal growth as unusual.
+ALERT_BASELINE_SQL = """
+WITH daily AS (
+  SELECT farm_id, record_date,
+         SUM(mortality_count) AS deaths,
+         SUM(feed_consumption) / SUM(bird_count) AS feed_per_bird,
+         AVG(temperature) AS temperature,
+         AVG(humidity) AS humidity
+  FROM poultry_records_cleaned
+  WHERE %(all_farms)s = 1 OR array_contains(split(%(farms)s, ','), UPPER(farm_id))
+  GROUP BY farm_id, record_date
+),
+latest AS (
+  SELECT farm_id, MAX(record_date) AS last_date FROM daily GROUP BY farm_id
+),
+series AS (
+  SELECT d.farm_id, l.last_date, DATEDIFF(d.record_date, l.last_date) AS x,
+         d.deaths, d.feed_per_bird, d.temperature, d.humidity
+  FROM daily d
+  JOIN latest l ON d.farm_id = l.farm_id
+  WHERE d.record_date >= DATE_SUB(l.last_date, %(baseline_days)s)
+),
+fit AS (
+  SELECT farm_id,
+         COUNT(*) AS base_days,
+         REGR_SLOPE(deaths, x) AS b_deaths,
+         REGR_INTERCEPT(deaths, x) AS a_deaths,
+         REGR_SLOPE(feed_per_bird, x) AS b_feed_per_bird,
+         REGR_INTERCEPT(feed_per_bird, x) AS a_feed_per_bird,
+         REGR_SLOPE(temperature, x) AS b_temperature,
+         REGR_INTERCEPT(temperature, x) AS a_temperature,
+         REGR_SLOPE(humidity, x) AS b_humidity,
+         REGR_INTERCEPT(humidity, x) AS a_humidity
+  FROM series
+  WHERE x < 0
+  GROUP BY farm_id
+)
+SELECT s.farm_id AS farm_id,
+       MAX(s.last_date) AS last_date,
+       MAX(f.base_days) AS base_days,
+       MAX(CASE WHEN s.x = 0 THEN s.deaths END) AS last_deaths,
+       MAX(f.a_deaths) AS expected_deaths,
+       SQRT(SUM(CASE WHEN s.x < 0
+                     THEN POW(s.deaths - (f.a_deaths + f.b_deaths * s.x), 2) END)
+            / (MAX(f.base_days) - 2)) AS sd_deaths,
+       MAX(CASE WHEN s.x = 0 THEN s.feed_per_bird END) AS last_feed_per_bird,
+       MAX(f.a_feed_per_bird) AS expected_feed_per_bird,
+       SQRT(SUM(CASE WHEN s.x < 0
+                     THEN POW(s.feed_per_bird
+                              - (f.a_feed_per_bird + f.b_feed_per_bird * s.x), 2) END)
+            / (MAX(f.base_days) - 2)) AS sd_feed_per_bird,
+       MAX(CASE WHEN s.x = 0 THEN s.temperature END) AS last_temperature,
+       MAX(f.a_temperature) AS expected_temperature,
+       SQRT(SUM(CASE WHEN s.x < 0
+                     THEN POW(s.temperature - (f.a_temperature + f.b_temperature * s.x), 2) END)
+            / (MAX(f.base_days) - 2)) AS sd_temperature,
+       MAX(CASE WHEN s.x = 0 THEN s.humidity END) AS last_humidity,
+       MAX(f.a_humidity) AS expected_humidity,
+       SQRT(SUM(CASE WHEN s.x < 0
+                     THEN POW(s.humidity - (f.a_humidity + f.b_humidity * s.x), 2) END)
+            / (MAX(f.base_days) - 2)) AS sd_humidity
+FROM series s
+JOIN fit f ON s.farm_id = f.farm_id
+GROUP BY s.farm_id
+ORDER BY farm_id"""
+
+
 def daily_records(farm_codes: list[str] | None, days: int) -> Query:
     """One row per farm per day: flock size, deaths, feed, weight, temperature, humidity."""
     return DAILY_RECORDS_SQL, {**_scope_params(farm_codes), "days": days, "max_rows": MAX_ROWS}
@@ -172,3 +244,10 @@ def growth_points(farm_codes: list[str] | None, batch_code: str | None) -> Query
         "batch": (batch_code or "").upper(),
         "max_rows": MAX_ROWS,
     }
+
+
+def alert_baselines(farm_codes: list[str] | None, baseline_days: int) -> Query:
+    """Per farm: the latest day's values, the values the trend of the previous
+    `baseline_days` days predicts for that day, and the residual standard deviation
+    (deaths, feed per bird, temperature, humidity)."""
+    return ALERT_BASELINE_SQL, {**_scope_params(farm_codes), "baseline_days": baseline_days}

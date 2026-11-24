@@ -189,6 +189,105 @@ def summary(scope: Scope, days: int) -> dict[str, Any]:
     }
 
 
+# --- alerts ----------------------------------------------------------------------------
+#
+# Alerts are statistical signals, not diagnoses and not veterinary thresholds. For each
+# farm, Hive fits a straight-line trend to each metric over the farm's previous
+# ALERT_BASELINE_DAYS days and predicts the latest day's value from it (see
+# hive_queries.ALERT_BASELINE_SQL). The deviation of the actual value from that
+# prediction, in residual standard deviations (z), decides the alert: at least
+# ALERT_WARNING_Z is a "warning", at least ALERT_DANGER_Z is "danger". 2 and 3 are the
+# usual statistical conventions for "unusual" and "very unusual"; they are not taken
+# from a poultry standard. No alert is raised with fewer than ALERT_MIN_BASELINE_DAYS
+# days of history or when the residual spread is 0, as the comparison would then be
+# meaningless. A very regular series has a tiny spread, so a statistically "unusual"
+# difference can still be negligible in practice; an alert therefore also needs the
+# value to differ from the prediction by at least ALERT_MIN_RELATIVE_CHANGE of it (and
+# by at least one bird for mortality). That guard is an application choice against
+# noise, not an agronomic threshold.
+
+ALERT_BASELINE_DAYS = 14
+ALERT_MIN_BASELINE_DAYS = 5
+ALERT_WARNING_Z = 2.0
+ALERT_DANGER_Z = 3.0
+ALERT_MIN_RELATIVE_CHANGE = 0.05
+
+# key -> (alert type, label, unit, decimals, directions that raise an alert,
+#         minimum absolute difference from the prediction)
+_ALERT_METRICS: dict[str, tuple[str, str, str, int, tuple[str, ...], float]] = {
+    "deaths": ("mortality", "Daily mortality", " birds", 1, ("above",), 1.0),
+    "feed_per_bird": ("feed", "Feed per bird", " kg", 3, ("above", "below"), 0.0),
+    "temperature": ("temperature", "House temperature", " °C", 1, ("above", "below"), 0.0),
+    "humidity": ("humidity", "Relative humidity", "% RH", 1, ("above", "below"), 0.0),
+}
+
+
+def _alert(scope: Scope, row: dict[str, Any], key: str) -> dict[str, Any] | None:
+    kind, label, unit, decimals, directions, min_diff = _ALERT_METRICS[key]
+    value, expected = row.get(f"last_{key}"), row.get(f"expected_{key}")
+    sd = row.get(f"sd_{key}")
+    if value is None or expected is None or not sd:
+        return None
+    z = (float(value) - float(expected)) / float(sd)
+    direction = "above" if z > 0 else "below"
+    if abs(z) < ALERT_WARNING_Z or direction not in directions:
+        return None
+    diff = abs(float(value) - float(expected))
+    if diff < max(min_diff, ALERT_MIN_RELATIVE_CHANGE * abs(float(expected))):
+        return None
+    base_days = _int(row["base_days"])
+    farm = _farm_fields(row["farm_id"], scope)
+    return {
+        "id": f"{kind}-{row['farm_id']}-{row['last_date']}",
+        "type": kind,
+        "severity": "danger" if abs(z) >= ALERT_DANGER_Z else "warning",
+        "title": f"{label} {direction} recent range",
+        "message": (
+            f"{label} on {row['last_date']} was {float(value):.{decimals}f}{unit}, "
+            f"{abs(z):.1f} standard deviations {direction} the "
+            f"{float(expected):.{decimals}f}{unit} expected from this farm's trend over "
+            f"the previous {base_days} days."
+        ),
+        **farm,
+        "date": row["last_date"],
+        "createdAt": row["last_date"],
+        "value": _num(value),
+        "expected": _num(expected),
+        "residualStdDev": _num(sd),
+        "baselineDays": base_days,
+        "zScore": round(z, 2),
+    }
+
+
+def alerts(scope: Scope, limit: int) -> list[dict[str, Any]]:
+    """Unusual latest-day readings per farm (see the rules above), most severe first."""
+    if scope.is_empty:
+        return []
+    rows = hive_client.run_query(
+        *hive_queries.alert_baselines(scope.farm_codes, ALERT_BASELINE_DAYS),
+        name="alert_baselines",
+    )
+    found = []
+    for row in rows:
+        if _int(row.get("base_days")) < ALERT_MIN_BASELINE_DAYS:
+            continue
+        found.extend(a for key in _ALERT_METRICS if (a := _alert(scope, row, key)))
+    found.sort(key=lambda a: (a["severity"] != "danger", -abs(a["zScore"])))
+    return found[:limit]
+
+
+def alert_rules() -> dict[str, Any]:
+    """The rule parameters, returned with every response so the UI can explain alerts."""
+    return {
+        "method": "latest day vs the linear trend of the farm's previous days (z-score)",
+        "baselineDays": ALERT_BASELINE_DAYS,
+        "minBaselineDays": ALERT_MIN_BASELINE_DAYS,
+        "warningZ": ALERT_WARNING_Z,
+        "dangerZ": ALERT_DANGER_Z,
+        "minRelativeChange": ALERT_MIN_RELATIVE_CHANGE,
+    }
+
+
 def growth(user: User, farm_id: int | None, batch_id: int | None) -> list[dict[str, Any]]:
     batch = None
     if batch_id is not None:

@@ -142,6 +142,7 @@ def test_all_queries_read_the_cleaned_table():
         hive_queries.farm_comparison(None, 30),
         hive_queries.period_summary(None, 30),
         hive_queries.growth_points(None, None),
+        hive_queries.alert_baselines(None, 14),
     ):
         assert "FROM poultry_records_cleaned" in sql
         assert "poultry_records_staging" not in sql

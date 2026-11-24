@@ -12,13 +12,16 @@ dataset grows.
 
 from __future__ import annotations
 
+import math
 import os
+import statistics
+from datetime import date
 from pathlib import Path
 
 import pytest
 from dotenv import dotenv_values
 
-from app.services import hive_client
+from app.services import analytics_service, hive_client, hive_queries
 
 pytestmark = pytest.mark.integration
 
@@ -134,6 +137,59 @@ def test_unreachable_hiveserver2_gives_503(app, admin):
     response = admin.get("/api/analytics/daily")
     assert response.status_code == 503
     assert response.get_json()["error"]["code"] == "HIVE_UNAVAILABLE"
+
+
+def test_alert_trend_statistics_match_an_independent_fit(app, admin):
+    """The HiveQL regression (REGR_SLOPE/INTERCEPT + residual SD) is re-done in Python
+    from a plain per-day GROUP BY over the same table."""
+    days = analytics_service.ALERT_BASELINE_DAYS
+    with app.app_context():
+        stats = hive_client.run_query(*hive_queries.alert_baselines(None, days), name="test")
+    daily = hive(
+        app,
+        "SELECT farm_id, record_date, SUM(mortality_count) AS deaths, "
+        "SUM(feed_consumption) / SUM(bird_count) AS feed_per_bird, "
+        "AVG(temperature) AS temperature, AVG(humidity) AS humidity "
+        "FROM poultry_records_cleaned GROUP BY farm_id, record_date",
+    )
+    assert stats, "Hive returned no alert baselines"
+    for row in stats:
+        last = date.fromisoformat(row["last_date"])
+        by_x = {
+            (date.fromisoformat(r["record_date"]) - last).days: r
+            for r in daily
+            if r["farm_id"] == row["farm_id"]
+        }
+        base = sorted(x for x in by_x if -days <= x < 0)
+        assert row["base_days"] == len(base)
+        for key in ("deaths", "feed_per_bird", "temperature", "humidity"):
+            ys = [float(by_x[x][key]) for x in base]
+            slope, intercept = statistics.linear_regression(base, ys)
+            sse = sum((y - (intercept + slope * x)) ** 2 for x, y in zip(base, ys, strict=True))
+            assert row[f"last_{key}"] == pytest.approx(float(by_x[0][key]))
+            assert row[f"expected_{key}"] == pytest.approx(intercept, rel=1e-6, abs=1e-9)
+            assert row[f"sd_{key}"] == pytest.approx(math.sqrt(sse / (len(base) - 2)), rel=1e-6)
+
+    body = admin.get("/api/alerts").get_json()
+    assert body["source"]["engine"] == "Apache Hive"
+    for alert in body["alerts"]:  # whatever fires must satisfy the documented rules
+        assert abs(alert["zScore"]) >= body["rules"]["warningZ"]
+
+
+def test_activity_lists_real_audit_entries(admin):
+    admin.post(
+        "/api/farms",
+        json={
+            "code": "INT-1",
+            "name": "Integration farm",
+            "location": "Test",
+            "capacity": 10,
+            "housingType": "Closed house",
+            "status": "active",
+        },
+    )
+    activity = admin.get("/api/activity").get_json()["activity"]
+    assert activity[0]["message"] == "Created farm Integration farm (INT-1)"
 
 
 def test_wrong_hive_password_gives_auth_error(app, admin):

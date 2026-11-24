@@ -3,6 +3,8 @@
 from flask import Flask
 
 from app.routes import (
+    activity,
+    alerts,
     analytics,
     audit,
     auth,
@@ -21,6 +23,8 @@ BLUEPRINT_MODULES = (
     batches,
     datasets,
     analytics,
+    alerts,
+    activity,
     audit,
 )
 

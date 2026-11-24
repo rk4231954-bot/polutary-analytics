@@ -11,7 +11,7 @@ import { card, kpiCard, pageHeader, selectOptions, sourceBadge, trend } from "..
 import { getActivity, getAlerts, getDailyRecords, getFarmComparison, getGrowthCurves, getSummary } from "../services/analytics.js";
 import { listFarms } from "../services/farms.js";
 import { $, html, on, setHtml } from "../utils/dom.js";
-import { formatNumber, formatPercent, formatRelative, formatWeightKg } from "../utils/format.js";
+import { formatDate, formatNumber, formatPercent, formatRelative, formatWeightKg } from "../utils/format.js";
 import "../styles/pages/dashboard.css";
 
 const RANGES = [
@@ -115,7 +115,7 @@ export default {
         <section class="pa-grid pa-grid--main-side">
           ${card({
             title: "Farm monitoring alerts",
-            subtitle: "Threshold and anomaly signals from recent readings",
+            subtitle: "Statistical signals from the latest Hive records. Not a diagnosis; check the flock.",
             icon: "alert-triangle",
             actions: html`<span data-alerts-badge></span>`,
             body: html`<div data-alerts>${loadingState("Loading alerts…", { compact: true })}</div>`,
@@ -254,7 +254,7 @@ export default {
     function renderAlerts(alerts, source) {
       setHtml($("[data-alerts-badge]", root), sourceBadge(source));
       if (!alerts.length) {
-        setHtml($("[data-alerts]", root), emptyState({ icon: "shield-check", title: "No active alerts", message: "All monitored indicators are within their expected ranges.", compact: true }));
+        setHtml($("[data-alerts]", root), emptyState({ icon: "shield-check", title: "No active alerts", message: "Each farm's latest readings are within the range expected from its recent trend.", compact: true }));
         return;
       }
       setHtml(
@@ -269,7 +269,7 @@ export default {
                   <span class="pa-badge pa-badge--${a.severity}">${a.severity === "danger" ? "High" : "Medium"}</span>
                 </div>
                 <p class="pa-list-item__text">${a.message}</p>
-                <div class="pa-meta-row mt-1"><span>${icon("map-pin", { size: 12 })}${a.farmName}</span><span>${icon("clock", { size: 12 })}${formatRelative(a.createdAt)}</span></div>
+                <div class="pa-meta-row mt-1"><span>${icon("map-pin", { size: 12 })}${a.farmName}</span><span>${icon("clock", { size: 12 })}${a.date ? `Records of ${formatDate(a.date)}` : formatRelative(a.createdAt)}</span></div>
               </div>
             </li>`,
           )}
@@ -281,7 +281,7 @@ export default {
     function renderActivity(items, source) {
       setHtml($("[data-activity-badge]", root), sourceBadge(source));
       if (!items.length) {
-        setHtml($("[data-activity]", root), emptyState({ icon: "history", title: "No recent activity", message: "Uploads, record changes and predictions will be listed here.", compact: true }));
+        setHtml($("[data-activity]", root), emptyState({ icon: "history", title: "No recent activity", message: "Uploads and farm, batch and account changes will be listed here.", compact: true }));
         return;
       }
       setHtml(
