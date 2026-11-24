@@ -7,6 +7,8 @@ unknown is marked **unknown** and isn't filled in by guesswork.
 | ID | Name | Status | Used by |
 |----|------|--------|---------|
 | DS-01 | `poultry_records.csv` (2 farms × 10 days) | **Development dataset. Origin of the values not documented.** | Hive tables in `poultry_analytics`, `/api/analytics/*`, `/api/alerts` |
+| DS-02 | Kaggle "Broiler Performance Index", `PS Performance.csv` (327 flocks) | **Public Kaggle dataset, Apache 2.0.** The publisher doesn't say where or when the flocks were raised. | Hive table `flock_performance`, `/api/flock-performance/summary`, dashboard card "Broiler flock benchmarks" |
+| (checked, not used) | Kaggle "Environmental Effect on Egg Production", `Egg_Production.csv` | Layer (egg) data, no dates/farms/mortality/weight, 407 of 481 rows are exact duplicates | nothing |
 
 ---
 
@@ -141,6 +143,86 @@ perfectly. The deaths simply alternate 2, 1, 2, 1. A model would learn that arti
 and any accuracy figure would mean nothing. For that reason, no mortality model was trained
 for use, saved or served, and the app shows no predictions. (The Predictions page is still a
 labelled preview.) A real model needs a dataset with a documented source and many batches.
+
+---
+
+## DS-02: Kaggle "Broiler Performance Index" (`PS Performance.csv`)
+
+### Source (checked 2026-11-24)
+
+| Item | Finding |
+|---|---|
+| Page | https://www.kaggle.com/datasets/isazulka/broiler-performance-index |
+| Publisher | Kaggle user "isa zulka" (`isazulka`). Dataset version 1, last updated 2024-10-23. |
+| Licence | Apache 2.0 (as shown in the Kaggle metadata) |
+| Description (verbatim) | Subtitle "Performance Score in Broiler Chickens Before 30days". "Performance Score in Broiler Chickens refers to a numerical assessment of production efficiency and overall performance based on key performance indicators. It helps evaluate flock productivity, health, and profitability." |
+| Where/when collected | **Not stated** by the publisher (no country, company, years or method). |
+| File | `PS Performance.csv`, 9,840 bytes, SHA-256 `b56fff6a6b877bb32bf1e636aaa229634a6d98fcd62ae6288b1bad9bae50caca`. Downloaded anonymously through the Kaggle API on 2026-11-24 to `data/raw/kaggle/isazulka__broiler-performance-index/` (git-ignored). |
+
+### Columns
+
+The headers are Indonesian. The meanings follow common Indonesian broiler terminology; the
+publisher gives no column dictionary.
+
+| Column | Meaning | Unit | Observed range |
+|---|---|---|---|
+| `Umur` | age at harvest | days | 24.0 to 29.4 |
+| `BW` | average body weight | kg | 0.85 to 1.51 |
+| `%Panen` | share of the flock harvested | % | 5.74 to 79.77 |
+| `Deplesi` | depletion: dead plus culled birds | % of the flock | 1.59 to 15.49 |
+| `IP` | Indeks Performa, the European production efficiency factor | index | 226 to 501 |
+
+- 327 rows, one per flock. No blank values. 35 rows are exact duplicates of an earlier row.
+  They are kept: two flocks can share the same five rounded figures, and nothing shows they
+  are copies.
+- **No date, farm, batch, bird count, feed or daily mortality.** So DS-02 can't feed the daily
+  schema, the daily dashboard charts or the alerts. Inventing those fields would be
+  fabrication.
+
+### How it's used
+
+1. An administrator uploads the file in Data Management → CSV Upload (card "Broiler flock
+   benchmarks"), which calls `POST /api/flock-performance`.
+2. The API checks the exact header, the numbers and impossible values. Rows that fail are
+   rejected and listed; no value is filled in or changed.
+3. The rows are written headerless to `HDFS_PROCESSED_DIR/flock_performance/records.csv`,
+   read back and compared by SHA-256. `_manifest.json` records the source.
+4. The external Hive table `flock_performance` points at that folder. A HiveQL `COUNT(*)` must
+   equal the accepted row count.
+5. `GET /api/flock-performance/summary` runs two HiveQL queries:
+   - averages and ranges, plus Pearson `CORR()` with the performance index;
+   - a breakdown by depletion band.
+6. The dashboard card shows those figures with the source and licence. They are not mixed
+   with DS-01.
+
+### Results from the real cluster (2026-11-24)
+
+The HDFS copy matched the original rows exactly. Every HiveQL figure equalled an independent
+Python calculation over the downloaded file.
+
+| Figure | Value |
+|---|---|
+| Flocks | 327 |
+| Average body weight | 1.232 kg (0.85 to 1.51) |
+| Average depletion | 3.72 % |
+| Average performance index | 360.0 (226 to 501) |
+| Correlation with the index: body weight | r = 0.648 |
+| Correlation with the index: depletion | r = −0.526 |
+| Correlation with the index: age | r = −0.178 |
+
+| Depletion band | Flocks | Average performance index |
+|---|---|---|
+| Below 3 % | 123 | 393.4 |
+| 3 % to 5 % | 165 | 346.1 |
+| 5 % to 8 % | 31 | 328.8 |
+| 8 % and above | 8 | 254.8 |
+
+The correlations describe association in this dataset only.
+
+**Caveat for ML:** the performance index (EPEF) is *calculated from* liveability (100 −
+depletion), body weight and age, plus feed conversion, which isn't in the file. A model that
+predicts IP from these columns would mostly rediscover that formula. Its accuracy wouldn't
+show real predictive power, so no model was trained on DS-02.
 
 ### To do before stage 10 (ML)
 

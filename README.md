@@ -29,6 +29,19 @@ temperature and humidity. It's a **development dataset typed by the project auth
 origin of its values is not documented.** It is not a Kaggle, public or real-farm dataset, and
 the UI labels it that way. It proves that the pipeline works, not that the farm findings are
 real. Full evidence and limitations: [`docs/research/datasets.md`](docs/research/datasets.md).
+
+**DS-02, Kaggle ["Broiler Performance Index"](https://www.kaggle.com/datasets/isazulka/broiler-performance-index)**
+(file `PS Performance.csv`, Apache 2.0): 327 real broiler flocks at harvest, with these columns:
+- age (days);
+- body weight (kg);
+- % harvested;
+- depletion % (dead plus culled);
+- performance index (EPEF).
+
+The publisher doesn't say where or when the flocks were raised. The file has no dates, farms or
+batches, so it is kept in its own Hive table (`flock_performance`) and shown in a separate
+dashboard card. It isn't mixed with DS-01.
+
 No image data is used.
 
 ## Technologies
@@ -170,7 +183,9 @@ seconds (MapReduce in local mode). `/api/alerts` takes about 15 s.
    locations and sizes.
 4. **Historical Analytics (45 s):** the Mortality, Feed, Growth and Environment tabs, with
    farm-wise HiveQL results.
-5. **Data Management → CSV Upload (1 min):** upload a CSV. Show the validation report and
+5. **Data Management → CSV Upload (1 min):** as admin, upload the Kaggle `PS Performance.csv` in the
+   "Broiler flock benchmarks" card (327 rows → HDFS → Hive), then show the new dashboard card.
+   Also: upload a CSV. Show the validation report and
    rejected rows, then the stepper: *processed → HDFS (SHA-256 verified) → Hive partition
    (row count verified)*.
 6. **Predictive Analytics (30 s):** the *Preview* labels. No model is trained, and why

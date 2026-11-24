@@ -20,8 +20,8 @@ same table.
 
 | Suite | Result |
 |---|---|
-| API unit tests | **192 passed**, 0 failed |
-| API integration tests (real HDFS + HiveServer2) | **13 passed**, 0 failed |
+| API unit tests | **200 passed**, 0 failed |
+| API integration tests (real HDFS + HiveServer2) | **14 passed**, 0 failed |
 | ML tests (`apps/ml`) | **3 passed**, 0 failed |
 | Lint (`bun run lint`) | passed |
 | `bun run test` (Turborepo) | 3/3 tasks successful |
@@ -80,6 +80,21 @@ same table.
   on Big Data, users and audit logs.
 - `create-admin` works. The admin gets 200 on every analytics, Big Data, Hive tables, users
   and audit-log endpoint.
+
+**Kaggle DS-02 end to end (2026-11-24, built frontend in headless Chromium, temporary SQLite
+admin, real HDFS and Hive):**
+
+- `PS Performance.csv` was uploaded through the Dataset Upload page: 327 of 327 rows accepted
+  and 327 rows counted in Hive.
+- `hdfs dfs -cat` of `/polutary/processed/flock_performance/records.csv` equals the original
+  rows plus their line numbers.
+- Every figure on the dashboard card equals a Python calculation over the downloaded file:
+  - averages and ranges;
+  - the three correlations;
+  - all four depletion bands.
+- No browser errors. The daily KPIs (DS-01) are unchanged.
+- `test_flock_performance_integration.py` repeats this on `/polutary-test` and
+  `flock_performance_test`.
 
 **HDFS integrity after restarts:** `hdfs fsck /` HEALTHY. The MD5s of the raw CSV, the cleaned
 Parquet file and the test file were unchanged.
