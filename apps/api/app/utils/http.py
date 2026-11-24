@@ -40,3 +40,13 @@ def query_int(name: str, default: int, *, minimum: int = 1, maximum: int = 1000)
     except ValueError as exc:
         raise ApiError(400, "BAD_QUERY", f"Query parameter '{name}' must be a number.") from exc
     return max(minimum, min(maximum, value))
+
+
+def query_id(name: str) -> int | None:
+    """Optional positive integer id from the query string (400 BAD_QUERY if malformed)."""
+    raw = request.args.get(name, "").strip()
+    if not raw:
+        return None
+    if not raw.isdigit() or int(raw) < 1:
+        raise ApiError(400, "BAD_QUERY", f"Query parameter '{name}' must be a positive id.")
+    return int(raw)

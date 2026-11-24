@@ -2,9 +2,29 @@
 
 from flask import Flask
 
-from app.routes import audit, auth, batches, datasets, farms, health, users
+from app.routes import (
+    analytics,
+    audit,
+    auth,
+    batches,
+    datasets,
+    farms,
+    health,
+    users,
+)
+
+BLUEPRINT_MODULES = (
+    health,
+    auth,
+    users,
+    farms,
+    batches,
+    datasets,
+    analytics,
+    audit,
+)
 
 
 def register_blueprints(app: Flask) -> None:
-    for module in (health, auth, users, farms, batches, datasets, audit):
+    for module in BLUEPRINT_MODULES:
         app.register_blueprint(module.bp)

@@ -1,19 +1,22 @@
 /**
- * Analytics read endpoints. In the real system these are answered by HiveQL
- * queries executed on Apache Hive by the Flask API (stage 9).
+ * Analytics read endpoints. The Flask API answers the /analytics/* endpoints with
+ * HiveQL queries executed on Apache Hive (table poultry_analytics.poultry_records_cleaned).
+ * farm_id / batch_id are application (SQLite) ids; the API maps them to Hive farm/batch codes.
+ * "days" windows end at the most recent record in the data, not at today's date.
  *
  * GET /analytics/summary?farm_id&days        → Summary
  * GET /analytics/daily?farm_id&days           → { records: FarmDailyRecord[] }
- * GET /analytics/growth?farm_id&batch_id      → { batches: [{ batchId, code, farmName, poultryType, points: [{ ageDays, avgWeightG }] }] }
- * GET /analytics/farm-comparison?days         → { farms: [{ farmId, farmName, mortalityRatePct, avgWeightG, feedPerBirdKg, birdCount }] }
- * GET /alerts?limit                           → { alerts: Alert[] }
- * GET /activity?limit                         → { activity: Activity[] }
+ * GET /analytics/growth?farm_id&batch_id      → { batches: [{ batchId, code, farmName, poultryType|null, ageBasis, points: [{ date, ageDays, avgWeightG, birdCount }] }] }
+ * GET /analytics/farm-comparison?days         → { farms: [{ farmId, farmName, mortalityRatePct, avgWeightG, feedPerBirdKg, birdCount, deaths, feedKg, avgTemperatureC, avgHumidityPct, ... }] }
+ * GET /alerts?farm_id&limit                   → { alerts: Alert[], rules }  (HiveQL: latest day vs each farm's trend)
+ * GET /activity?limit                         → { activity: Activity[] }    (from the audit log, scoped to the user)
  *
  * Summary: { totalFarms, activeBatches, totalBirds, feedKg, mortalityRatePct, avgWeightG,
  *            trends: { feedKg, mortalityRatePct } (percent change vs previous period), from, to }
- * FarmDailyRecord: { date, farmId, farmName, temperatureC, humidityPct, birdCount, feedKg, mortality, avgWeightG }
- * Alert: { id, type: "temperature"|"humidity"|"mortality"|"feed", severity: "warning"|"danger", title, message, farmId, farmName, createdAt }
- * Activity: { id, type: "upload"|"farm"|"prediction"|"user", message, actor, createdAt }
+ * FarmDailyRecord: { date, farmId (Hive farm code), farmName, temperatureC, humidityPct, birdCount, feedKg, mortality, avgWeightG }
+ * Alert: { id, type: "temperature"|"humidity"|"mortality"|"feed", severity: "warning"|"danger", title, message,
+ *          farmId (Hive farm code), farmName, date (record date), createdAt, value, expected, residualStdDev, zScore }
+ * Activity: { id, type: "upload"|"farm"|"user", action, outcome, message, actor, createdAt }
  */
 import { api } from "./apiClient.js";
 import { readWithPreview } from "./dataSource.js";

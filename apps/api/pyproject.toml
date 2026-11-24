@@ -34,5 +34,6 @@ package = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-ra"
+# Integration tests need the real HiveServer2/HDFS: run them with `uv run pytest -m integration`.
+addopts = "-ra -m 'not integration'"
 markers = ["integration: needs the real Hadoop/Hive services (stage 7+)"]

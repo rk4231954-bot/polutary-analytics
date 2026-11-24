@@ -20,7 +20,8 @@ function ageLabels(batches) {
   return Array.from({ length: maxAge + 1 }, (_, i) => String(i));
 }
 
-const batchLabel = (b) => `${b.code} (${b.poultryType})`;
+// poultryType is null for Hive batches that are not registered in the app.
+const batchLabel = (b) => (b.poultryType ? `${b.code} (${b.poultryType})` : b.code);
 
 export default createAnalyticsPage({
   title: "Growth Analytics",
@@ -31,11 +32,13 @@ export default createAnalyticsPage({
   stats(batches) {
     const latest = batches.map((b) => withGain(b.points)).filter((p) => p.length).map((p) => p.at(-1));
     const recentGain = batches.map((b) => mean(withGain(b.points).slice(-7).map((p) => p.gainG)));
+    // Without a registered batch start date the API counts age from the batch's first record.
+    const ageFromFirstRecord = batches.some((b) => b.ageBasis === "first_record");
     return [
       { label: "Batches tracked", value: formatNumber(batches.length), icon: "layers", tone: "info", footnote: "With weight records" },
       { label: "Latest average weight", value: formatNumber(mean(latest.map((p) => p.avgWeightG)), { decimals: 0 }), unit: "g", icon: "scale", footnote: "Mean of each batch's latest weighing" },
       { label: "Average daily gain", value: formatNumber(mean(recentGain), { decimals: 1 }), unit: "g/day", icon: "trending-up", footnote: "Last 7 days of records" },
-      { label: "Oldest flock age", value: formatNumber(latest.length ? Math.max(...latest.map((p) => p.ageDays)) : null), unit: "days", icon: "calendar", tone: "warning", footnote: "Among selected batches" },
+      { label: "Oldest flock age", value: formatNumber(latest.length ? Math.max(...latest.map((p) => p.ageDays)) : null), unit: "days", icon: "calendar", tone: "warning", footnote: ageFromFirstRecord ? "Days since first record (no batch start date registered)" : "Among selected batches" },
     ];
   },
   charts: [

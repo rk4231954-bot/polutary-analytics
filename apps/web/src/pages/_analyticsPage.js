@@ -78,7 +78,7 @@ export function createAnalyticsPage(config) {
             </div>
             <div class="pa-analytics-provenance">
               ${icon("database", { size: 13 })}
-              <span>In the full system these figures are produced by HiveQL queries executed on Apache Hive over data stored in HDFS.</span>
+              <span>Figures are produced by HiveQL queries executed on Apache Hive over data stored in HDFS. Sample data appears only in preview mode and is always marked.</span>
             </div>
           </div>
           <section class="pa-section" aria-label="Summary">

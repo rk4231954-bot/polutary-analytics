@@ -7,6 +7,7 @@ which must always be provided (except in the automated test configuration).
 from __future__ import annotations
 
 import os
+import re
 from datetime import timedelta
 from pathlib import Path
 
@@ -14,6 +15,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 WEAK_SECRETS = {"", "change-me", "changeme", "secret", "dev", "development"}
+
+HIVE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
+HIVE_AUTH_MODES = {"NONE", "NOSASL", "LDAP", "CUSTOM"}
 
 
 def _bool(name: str, default: bool) -> bool:
@@ -89,6 +93,15 @@ class BaseConfig:
 
         self.HSTS_ENABLED = _bool("HSTS_ENABLED", False)
 
+        # --- Apache Hive (HiveServer2 via PyHive). Analytics are HiveQL on Hive, never SQLite. ---
+        self.HIVE_HOST = os.environ.get("HIVE_HOST", "localhost").strip()
+        self.HIVE_PORT = _int("HIVE_PORT", 10000)
+        # User HiveServer2 runs queries as (doAs). Empty = the OS user running the API.
+        self.HIVE_USERNAME = os.environ.get("HIVE_USERNAME", "").strip()
+        self.HIVE_PASSWORD = os.environ.get("HIVE_PASSWORD", "")
+        self.HIVE_DATABASE = os.environ.get("HIVE_DATABASE", "poultry_analytics").strip()
+        self.HIVE_AUTH = os.environ.get("HIVE_AUTH", "NONE").strip().upper()
+
     def validate(self) -> None:
         if self.SECRET_KEY.strip().lower() in WEAK_SECRETS or len(self.SECRET_KEY) < 32:
             raise ConfigError(
@@ -105,6 +118,14 @@ class BaseConfig:
             raise ConfigError("JWT_COOKIE_SAMESITE=None requires JWT_COOKIE_SECURE=true (HTTPS).")
         if not 1 <= self.MAX_UPLOAD_MB <= 500:
             raise ConfigError("MAX_UPLOAD_MB must be between 1 and 500.")
+        if not HIVE_IDENTIFIER_RE.match(self.HIVE_DATABASE):
+            raise ConfigError("HIVE_DATABASE must be a plain Hive identifier (letters, digits, _).")
+        if self.HIVE_AUTH not in HIVE_AUTH_MODES:
+            raise ConfigError(f"HIVE_AUTH must be one of: {', '.join(sorted(HIVE_AUTH_MODES))}.")
+        if self.HIVE_PASSWORD and self.HIVE_AUTH not in {"LDAP", "CUSTOM"}:
+            raise ConfigError("HIVE_PASSWORD is only used with HIVE_AUTH=LDAP or CUSTOM.")
+        if not 1 <= self.HIVE_PORT <= 65535:
+            raise ConfigError("HIVE_PORT must be a valid TCP port.")
         web_dir = (REPO_ROOT / "apps" / "web").resolve()
         if Path(self.DATA_DIR).is_relative_to(web_dir):
             raise ConfigError("DATA_DIR must not be inside apps/web (it would be web-served).")
