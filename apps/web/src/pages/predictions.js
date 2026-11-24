@@ -8,7 +8,7 @@ import { icon } from "../components/icons.js";
 import { setButtonLoading } from "../components/modal.js";
 import { emptyState, errorState, loadingState } from "../components/states.js";
 import { toast } from "../components/toast.js";
-import { card, pageHeader, predictionBadge, predictionDisclaimer, sampleBadge, selectOptions } from "../components/ui.js";
+import { callout, card, pageHeader, predictionBadge, predictionDisclaimer, sampleBadge, selectOptions } from "../components/ui.js";
 import { listBatches } from "../services/batches.js";
 import {
   generatePrediction, getEnvironmentForecast, getFeedForecast, getGrowthForecast, getMortalityRisk,
@@ -79,6 +79,12 @@ export default {
             </div>
             <button type="button" class="btn btn-primary btn-sm" data-action="generate" disabled>${icon("brain", { size: 14 })}Generate prediction</button>`,
         })}
+        <div class="pa-section">${callout({
+          tone: "warning",
+          title: "Preview: no prediction model is trained yet",
+          message:
+            "The current development dataset (20 daily records: 2 farms × 10 days) is too small to train or fairly evaluate a mortality model; a one-line rule already matches its held-out days. The prediction API is not built, so panels show labelled sample previews or 'not available'. Details: docs/research/datasets.md.",
+        })}</div>
         <div class="pa-section">${predictionDisclaimer()}</div>
         <div data-body>${loadingState("Loading batches…")}</div>`,
     );

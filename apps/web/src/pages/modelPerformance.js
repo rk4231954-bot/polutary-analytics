@@ -78,6 +78,14 @@ export default {
               "Metrics are computed by the ML service on a held-out test split of a documented dataset. This page never displays sample, estimated or hand-entered values.",
           })}
         </div>
+        <div class="pa-section">
+          ${callout({
+            tone: "warning",
+            title: "No model has been trained",
+            message:
+              "A data-sufficiency check on the 20-row development dataset showed that it cannot support a meaningful mortality model, so no metrics exist to show. The check and its measured results are documented in docs/research/datasets.md.",
+          })}
+        </div>
         <div data-body>${skeletonKpis(4)}</div>
         <div class="pa-section mt-4">${metricReferenceCard()}</div>`,
     );
