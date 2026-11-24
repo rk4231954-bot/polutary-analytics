@@ -111,6 +111,7 @@ After that, administrators manage roles from **Administration & Security → Use
 | `datasets.upload` (CSV ingestion) | ✔ all | ✔ assigned | | |
 | `datasets.view` (reports, previews, history) | ✔ all | ✔ assigned | ✔ assigned | |
 | `datasets.delete` | ✔ all | ✔ assigned | | |
+| `cluster.view` (HDFS/Hive status, Hive tables) | ✔ | | | |
 | Read farms & batches | all | assigned | assigned | assigned |
 
 ## Database schema (SQLite)
@@ -259,6 +260,115 @@ data/processed/farm_id=<farm>/upload_id=<id>/manifest.json columns + Hive types,
 `records.csv`: UTF-8, comma-separated, header row, empty field = missing, columns `date,
 farm_code, batch_code, temperature_c, humidity_pct, feed_kg, water_l, mortality, avg_weight_g,
 bird_count, source_line` (`source_line` = line in the original upload).
+
+## Analytics on Apache Hive (stage 9)
+
+Analytics endpoints run **HiveQL on HiveServer2** through PyHive and return the query
+results. They never read SQLite or the upload staging files. SQLite still holds users,
+farms, batches, uploads and the audit log.
+
+| Module | Role |
+|---|---|
+| `app/services/hive_client.py` | one connection per request, error mapping, row normalisation |
+| `app/services/hive_queries.py` | all HiveQL, static text with bound values only (`%(name)s`) |
+| `app/services/analytics_service.py` | farm scoping (RBAC) and response shaping |
+| `app/routes/analytics.py` | `/api/analytics/*` blueprint |
+
+All queries read `<HIVE_DATABASE>.poultry_records_cleaned`. A `days` window ends at the
+**latest record date in the data**, not today, so historic datasets still show values.
+
+| Method | Path | Access | Response |
+|---|---|---|---|
+| GET | `/api/analytics/status` | 🔒 `analytics.view` | `{hive: {connected, database, tables}, source}` |
+| GET | `/api/analytics/summary?farm_id=&days=` | 🔒 `analytics.view` | `{totalFarms, activeBatches, totalBirds, feedKg, mortalityRatePct, avgWeightG, trends, from, to, source}` |
+| GET | `/api/analytics/daily?farm_id=&days=` | 🔒 `analytics.view` | `{records: [{date, farmId, farmCode, farmName, birdCount, mortality, feedKg, avgWeightG, temperatureC, humidityPct, records}], source, days}` |
+| GET | `/api/analytics/farm-comparison?days=` | 🔒 `analytics.view` | `{farms: [{farmCode, farmName, deaths, mortalityRatePct, feedKg, feedPerBirdKg, avgWeightG, avgTemperatureC, avgHumidityPct, ...}], source, days}` |
+| GET | `/api/analytics/growth?farm_id=&batch_id=` | 🔒 `analytics.view` | `{batches: [{code, farmName, poultryType, ageBasis, points: [{date, ageDays, avgWeightG, birdCount}]}], source}` |
+| GET | `/api/alerts?farm_id=&limit=` | 🔒 `analytics.view` | `{alerts: [{id, type, severity, title, message, farmCode, farmName, date, value, expected, residualStdDev, zScore, baselineDays}], rules, source}` |
+| GET | `/api/bigdata/status` | 🔒 `cluster.view` | `{hdfs: {connected, namenodeUrl, state, capacityBytes, usedBytes, remainingBytes, liveDataNodes, filesTotal, blocksTotal}, hive: {connected, host, port, database, version}, latestIngestionAt}` |
+| GET | `/api/hive/tables` | 🔒 `cluster.view` | `{tables: [{name, type, location, partitioned, rowCount, numFiles, totalSizeBytes, updatedAt}], source}` |
+| GET | `/api/activity?limit=` | 🔒 any signed-in user | `{activity: [{id, type, action, outcome, message, actor, createdAt}]}` (from the audit log; see below) |
+
+Mortality, feed, average weight and temperature are all served by `daily` (per farm per day)
+and `farm-comparison` (per farm over the period). `days` is 1–3650 (default 30). `farm_id` and
+`batch_id` are **application (SQLite) ids**. They're mapped to Hive codes through `Farm.code` and
+`Batch.code`. `avgWeightG` is grams (the dataset stores kg).
+
+**Farm scoping.** Admins see every farm in Hive. Other roles see only Hive rows whose
+`farm_id` equals the `code` of a farm assigned to them. A user with no farms gets empty
+results and Hive isn't queried. Veterinarians don't have `analytics.view`.
+
+**Alerts** (`/api/alerts`) are statistical signals, **not diagnoses** and not veterinary
+thresholds. How they work:
+
+- For each farm, one HiveQL query (`hive_queries.ALERT_BASELINE_SQL`) takes the farm's latest
+  record day and the 14 days before it.
+- For mortality, feed per bird, temperature and humidity, it fits a least-squares trend with
+  `REGR_SLOPE`/`REGR_INTERCEPT`, predicts the latest day from that trend, and works out the
+  residual standard deviation.
+- An alert needs all of the following:
+  - `|z| ≥ 2` for a warning, or `|z| ≥ 3` for danger;
+  - a difference of at least 5% of the predicted value (and at least one bird for mortality),
+    so a negligible difference on a very regular series isn't flagged;
+  - at least 5 days of history;
+  - for mortality, an increase only.
+- A trend is used rather than a flat average because feed per bird rises as birds grow, and
+  a flat average would flag normal growth.
+- The 2σ and 3σ cut-offs are common statistical conventions, and the 5% guard is an
+  application choice. Neither comes from a poultry standard. The rule parameters come back in
+  `rules` with every response.
+- `date`/`createdAt` is the **record date** in the data, not the time of the request.
+
+**Activity** (`/api/activity`) lists real data-changing actions from the audit log: dataset
+uploads and deletions, farm/batch create/update/delete, inspections, and account
+administration. Sign-ins and security events stay on the admin-only audit pages. Who sees what:
+
+- Admins see everything.
+- Other users see their own actions, plus actions on their assigned farms when their role
+  allows that record type (`datasets.view` for uploads, `health.view` for inspections).
+- Account administration is visible to admins only.
+
+**Cluster status** (`/api/bigdata/status`, `/api/hive/tables`, admins only) is read-only metadata
+for the Big Data page:
+
+- HDFS figures come from the NameNode JMX bean `FSNamesystemState` at `WEBHDFS_URL`.
+- Tables come from `SHOW TABLES` plus `DESCRIBE FORMATTED`. Table names are checked against the
+  identifier allow-list before they're quoted.
+- `rowCount` is Hive's stored `numRows` statistic. It's `null` when Hive has no statistic (the
+  external staging table), rather than a guess or a MapReduce count.
+- `updatedAt` / `latestIngestionAt` is the HDFS modification time of the table directories
+  (WebHDFS `GETFILESTATUS`).
+- `hive.version` is `null` (not queried).
+
+Free-form HiveQL from the browser (`POST /api/hive/query`, `/api/hive/queries`) is **not
+offered**. The API runs only the fixed statements in `hive_queries.py`, so the page's query
+console reports that the endpoint is unavailable.
+
+**Errors.**
+
+| Status | Code | When |
+|---|---|---|
+| 503 | `HIVE_UNAVAILABLE` | HiveServer2 can't be reached (connection refused, timeout) |
+| 503 | `HIVE_AUTH_FAILED` | HiveServer2 refused the API's login (check `HIVE_USERNAME`/`HIVE_PASSWORD`/`HIVE_AUTH`) |
+| 502 | `HIVE_QUERY_FAILED` | HiveServer2 rejected or failed the query (details go to the server log only) |
+| 400 | `BAD_QUERY` | invalid `days`, `farm_id` or `batch_id` |
+| 404 | `NOT_FOUND` | farm/batch doesn't exist or isn't accessible |
+
+**Configuration** (`.env`, keep it mode 0600):
+
+- `HIVE_HOST` (localhost) and `HIVE_PORT` (10000).
+- `HIVE_USERNAME`: HiveServer2 runs queries as this user (doAs), so it needs HDFS access.
+- `HIVE_DATABASE` (poultry_analytics).
+- `HIVE_AUTH` (`NONE`|`NOSASL`|`LDAP`|`CUSTOM`). The project's HiveServer2 requires
+  `CUSTOM`, a password login (see `infrastructure/hadoop-hive/README.md`).
+- `HIVE_PASSWORD`: used with LDAP/CUSTOM only, and never logged or returned in errors.
+- `WEBHDFS_URL` (http://127.0.0.1:9870): the NameNode HTTP address, used read-only for cluster status.
+
+**Tests.** `uv run pytest` runs unit tests with Hive replaced at the `run_query` boundary.
+`uv run pytest -m integration` runs against the real HiveServer2, using the `HIVE_*` settings
+from `apps/api/.env`. It compares each endpoint with an independent HiveQL aggregate and re-fits
+the alert trends in Python. It also checks the 503 paths, including a refused login. Start order for HDFS, HiveServer2,
+Beeline and Flask: see `infrastructure/hadoop-hive/README.md`.
 
 ## Connecting a deployed frontend (Vercel)
 

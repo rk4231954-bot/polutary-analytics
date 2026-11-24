@@ -8,7 +8,12 @@ Farm managers upload poultry production CSV files. The system validates and prep
 
 ## Status
 
-Stage 1 (monorepo initialization) is done. The app features come in later stages; see the roadmap in [CLAUDE.md](CLAUDE.md).
+Stages 1–6 are done: frontend, Flask API, SQLite app data, authentication and roles, and CSV
+ingestion. The dashboard analytics and alerts are computed by HiveQL on a native Hadoop +
+Hive install. Uploads aren't written to HDFS yet (stage 7). ML (stage 10) hasn't started.
+The roadmap is in [CLAUDE.md](CLAUDE.md). The dataset currently in Hive is a small
+development dataset whose origin is still being documented; see
+[`docs/research/datasets.md`](docs/research/datasets.md).
 
 ## Repository layout
 
@@ -17,7 +22,7 @@ apps/web                    Vite + Bootstrap 5 + Chart.js frontend
 apps/api                    Flask REST API (SQLAlchemy/SQLite, HDFS, PyHive)
 apps/ml                     ML training and evaluation (pandas, scikit-learn, statsmodels)
 packages/shared-config      Shared lint/format config (Ruff base config)
-infrastructure/hadoop-hive  Docker Compose for HDFS + Hive (stage 7)
+infrastructure/hadoop-hive  HDFS + Hive: run/security docs, HiveServer2 auth provider
 data/{raw,processed,sample} Dataset storage (raw/processed are git-ignored)
 docs/{architecture,research,testing}
 scripts                     Developer utility scripts
@@ -47,12 +52,39 @@ bun run setup                 # uv sync for apps/api and apps/ml
 cd apps/api && uv run flask --app run create-admin --email you@example.org --name "Your Name" && cd ../..
 ```
 
+## Starting and stopping
+
+Start in this order: **HDFS → HiveServer2 → (Beeline check) → Flask API + frontend**. Stop
+in the reverse order. Full commands, checks and troubleshooting:
+[`infrastructure/hadoop-hive/README.md`](infrastructure/hadoop-hive/README.md).
+
+```bash
+# start
+start-dfs.sh                                                   # HDFS
+until hdfs dfsadmin -safemode get | grep -q OFF; do sleep 2; done
+pgrep -f '[D]proc_hiveserver2' || (cd "$HIVE_HOME" && nohup hive --service hiveserver2 > ~/hiveserver2.out 2>&1 &)
+until ss -ltn | grep -q '127.0.0.1\]*:10000 '; do sleep 5; done  # HiveServer2 ready (30–90 s)
+bun run dev                                                    # API :5000 + frontend :5173
+
+# stop
+#   Ctrl+C in the `bun run dev` terminal
+kill -TERM "$(pgrep -f '[D]proc_hiveserver2')"                  # HiveServer2 (graceful)
+while pgrep -f '[D]proc_hiveserver2' >/dev/null; do sleep 1; done
+stop-dfs.sh                                                    # HDFS
+```
+
+The API signs in to HiveServer2 with `HIVE_USERNAME` / `HIVE_PASSWORD` (`HIVE_AUTH=CUSTOM`) from
+`apps/api/.env`. If HiveServer2 is down, analytics endpoints return `503 HIVE_UNAVAILABLE`.
+If the credentials are wrong, they return `503 HIVE_AUTH_FAILED`. The rest of the app keeps
+working.
+
 ## Common commands
 
 ```bash
 bun run dev     # Vite frontend (http://localhost:5173) + Flask API (http://127.0.0.1:5000, proxied at /api)
 bun run lint    # ruff on the Python apps
-bun run test    # pytest on the Python apps + bun test for the frontend
+bun run test    # pytest (unit) on the Python apps + bun test for the frontend
+(cd apps/api && uv run pytest -m integration)   # API tests against the real HiveServer2
 bun run build   # production build of the frontend
 ```
 
