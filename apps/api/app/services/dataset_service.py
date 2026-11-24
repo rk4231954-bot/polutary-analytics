@@ -4,7 +4,9 @@ A processed CSV is saved on local disk (stage 6) and then copied to HDFS through
 WebHDFS (stage 7) under HDFS_PROCESSED_DIR/farm_id=<farm>/upload_id=<upload>/. The HDFS
 copy is read back and checked by SHA-256 before the dataset counts as stored in HDFS.
 If HDFS is unavailable the dataset stays processed locally and the failure is recorded.
-Exposing uploads in Hive (stage 8) is NOT done here; the hive stage stays false.
+The HDFS folder is then added as a partition of the external Hive table poultry_uploads
+(stage 8) and counted with HiveQL; the dataset is marked available in Hive only when Hive
+reads back exactly the accepted rows.
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ from werkzeug.utils import secure_filename
 
 from app.extensions import db
 from app.models import DatasetEvent, DatasetUpload, Farm, PoultryBatch, User
-from app.services import audit_service, hdfs_client
+from app.services import audit_service, hdfs_client, hive_client, hive_queries
 from app.services.csv_ingestion import FarmContext, IngestionResult, ingest
 from app.services.csv_schema import FIELDS_BY_KEY, output_schema
 from app.services.permissions import accessible_farm_ids, can_access_farm
@@ -32,6 +34,12 @@ from app.utils.errors import ApiError, ValidationError
 from app.utils.time import iso, today, utcnow
 
 log = logging.getLogger(__name__)
+
+_HIVE_ERRORS = (
+    hive_client.HiveUnavailableError,
+    hive_client.HiveAuthError,
+    hive_client.HiveQueryError,
+)
 
 # Browsers send different types for .csv (Windows/Excel: application/vnd.ms-excel).
 # The content itself is always checked afterwards (UTF-8 text, no binary data, valid CSV).
@@ -266,11 +274,15 @@ def _store_in_hdfs(dataset: DatasetUpload) -> None:
     try:
         records = storage.resolve(dataset.processed_path).read_bytes()
         manifest = json.loads(storage.resolve(manifest_rel).read_bytes())
+        # Hive text tables read every line as data (MapReduce ignores skip.header.line.count
+        # on this install), so the HDFS copy is the processed file without its header row.
+        body = records.split(b"\n", 1)[1] if b"\n" in records else b""
         hdfs_client.mkdirs(folder)
-        sha = hdfs_client.store_verified(records_path, records)
-        manifest["hdfs"] = {"stored": True, "path": records_path, "sha256": sha}
+        sha = hdfs_client.store_verified(records_path, body)
+        manifest["hdfs"] = {"stored": True, "path": records_path, "sha256": sha, "header": False}
         manifest_bytes = json.dumps(manifest, indent=2).encode()
-        hdfs_client.store_verified(f"{folder}/{storage.MANIFEST_FILE}", manifest_bytes)
+        # "_" prefix: Hive skips the manifest when it reads the partition folder.
+        hdfs_client.store_verified(f"{folder}/_{storage.MANIFEST_FILE}", manifest_bytes)
         storage.write_bytes(manifest_rel, manifest_bytes)
     except hdfs_client.HdfsError as exc:
         _event(
@@ -287,7 +299,67 @@ def _store_in_hdfs(dataset: DatasetUpload) -> None:
         dataset,
         "hdfs",
         "success",
-        f"Stored in HDFS at {records_path} ({len(records):,} bytes, SHA-256 verified).",
+        f"Stored in HDFS at {records_path} ({len(body):,} bytes without the header row, "
+        "SHA-256 verified).",
+    )
+    _register_in_hive(dataset, folder)
+
+
+def hive_info(dataset: DatasetUpload) -> dict:
+    """The Hive partition holding this upload ({} when it isn't registered)."""
+    if not dataset.report:
+        return {}
+    return json.loads(dataset.report).get("hive") or {}
+
+
+def _register_in_hive(dataset: DatasetUpload, folder: str) -> None:
+    """Adds the upload's HDFS folder as a partition of poultry_uploads and checks it in Hive."""
+    farm_id, upload_id = int(dataset.farm_id), int(dataset.id)
+    name = current_app.config["HIVE_UPLOADS_TABLE"]
+    try:
+        hive_client.run_statement(
+            *hive_queries.create_uploads_table(name, hdfs_client.processed_root(), output_schema()),
+            name="create_uploads_table",
+        )
+        hive_client.run_statement(
+            *hive_queries.add_upload_partition(name, farm_id, upload_id, folder),
+            name="add_upload_partition",
+        )
+        rows = hive_client.run_query(
+            *hive_queries.count_upload_rows(name, farm_id, upload_id), name="count_upload_rows"
+        )
+    except _HIVE_ERRORS as exc:
+        _event(
+            dataset,
+            "hive",
+            "failure",
+            f"Not registered in Hive: {exc} The file stays in HDFS.",
+        )
+        return
+    counted = int(rows[0]["row_count"]) if rows else 0
+    table = f"{current_app.config['HIVE_DATABASE']}.{name}"
+    if counted != dataset.accepted_rows:
+        _event(
+            dataset,
+            "hive",
+            "failure",
+            f"Hive read {counted:,} rows from the partition but {dataset.accepted_rows:,} were "
+            "expected, so the dataset is not marked as available in Hive.",
+        )
+        return
+    report = json.loads(dataset.report) if dataset.report else {}
+    report["hive"] = {
+        "table": table,
+        "partition": f"farm_id={farm_id}/upload_id={upload_id}",
+        "rowCount": counted,
+    }
+    dataset.report = json.dumps(report)
+    _event(
+        dataset,
+        "hive",
+        "success",
+        f"Available in Hive as {table} partition farm_id={farm_id}, upload_id={upload_id} "
+        f"({counted:,} rows counted with HiveQL).",
     )
 
 
@@ -479,8 +551,20 @@ def delete_dataset(user: User, dataset: DatasetUpload) -> None:
         commit=False,
     )
     hdfs_dir = str(PurePosixPath(hdfs_path).parent) if hdfs_path else None
+    hive_table = hive_info(dataset).get("table")
+    farm_id, upload_id = dataset.farm_id, dataset.id
     db.session.delete(dataset)
     db.session.commit()
+    if hive_table:
+        try:  # metadata only: the table is external, so this never deletes HDFS data
+            hive_client.run_statement(
+                *hive_queries.drop_upload_partition(
+                    hive_table.rsplit(".", 1)[-1], farm_id, upload_id
+                ),
+                name="drop_upload_partition",
+            )
+        except _HIVE_ERRORS:
+            log.exception("Could not drop Hive partition for dataset %s", upload_id)
     if hdfs_dir and current_app.config["HDFS_ENABLED"]:
         try:  # only this upload's own folder under HDFS_PROCESSED_DIR
             hdfs_client.delete_dir(hdfs_dir)

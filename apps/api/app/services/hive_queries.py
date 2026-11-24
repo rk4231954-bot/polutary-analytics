@@ -21,6 +21,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.config import HIVE_IDENTIFIER_RE
+
 # Documentation/reporting only; the queries below name the table literally.
 ANALYTICS_TABLE = "poultry_records_cleaned"
 
@@ -251,3 +253,57 @@ def alert_baselines(farm_codes: list[str] | None, baseline_days: int) -> Query:
     `baseline_days` days predicts for that day, and the residual standard deviation
     (deaths, feed per bird, temperature, humidity)."""
     return ALERT_BASELINE_SQL, {**_scope_params(farm_codes), "baseline_days": baseline_days}
+
+
+# --- Uploaded datasets (stage 8) ---------------------------------------------------------
+#
+# Processed uploads live in HDFS under HDFS_PROCESSED_DIR/farm_id=<f>/upload_id=<u>/records.csv
+# (stage 7). One external, partitioned table reads them in place; dropping a partition never
+# deletes HDFS data. The HDFS files have no header row, and Hive ignores files starting with
+# "_", so _manifest.json is not read as data. Column names and types come from
+# csv_schema.output_schema() (code, not user input).
+# The table name comes from HIVE_UPLOADS_TABLE, which the config checks against
+# HIVE_IDENTIFIER_RE; it is re-checked here before it is placed into the statement.
+UPLOADS_TABLE = "poultry_uploads"
+
+
+def _table(name: str) -> str:
+    if not HIVE_IDENTIFIER_RE.match(name):
+        raise ValueError("Unsafe Hive table name.")
+    return name
+
+
+def create_uploads_table(table: str, location: str, columns: list[dict[str, str]]) -> Query:
+    cols = ",\n    ".join(f"`{c['name']}` {c['type']}" for c in columns)
+    sql = f"""
+CREATE EXTERNAL TABLE IF NOT EXISTS {_table(table)} (
+    {cols}
+)
+PARTITIONED BY (farm_id INT, upload_id INT)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+LOCATION %(location)s
+TBLPROPERTIES ('serialization.null.format'='')"""
+    return sql, {"location": location}
+
+
+def add_upload_partition(table: str, farm_id: int, upload_id: int, location: str) -> Query:
+    sql = f"""
+ALTER TABLE {_table(table)} ADD IF NOT EXISTS
+PARTITION (farm_id=%(farm_id)s, upload_id=%(upload_id)s) LOCATION %(location)s"""
+    return sql, {"farm_id": int(farm_id), "upload_id": int(upload_id), "location": location}
+
+
+def drop_upload_partition(table: str, farm_id: int, upload_id: int) -> Query:
+    sql = f"""
+ALTER TABLE {_table(table)} DROP IF EXISTS
+PARTITION (farm_id=%(farm_id)s, upload_id=%(upload_id)s)"""
+    return sql, {"farm_id": int(farm_id), "upload_id": int(upload_id)}
+
+
+def count_upload_rows(table: str, farm_id: int, upload_id: int) -> Query:
+    sql = f"""
+SELECT COUNT(*) AS row_count
+FROM {_table(table)}
+WHERE farm_id = %(farm_id)s AND upload_id = %(upload_id)s"""  # noqa: S608 (allow-listed name)
+    return sql, {"farm_id": int(farm_id), "upload_id": int(upload_id)}

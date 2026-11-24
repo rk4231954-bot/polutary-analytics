@@ -115,6 +115,7 @@ def dataset_to_dict(dataset: DatasetUpload, *, detail: bool = False) -> dict:
     processed = dataset.status == "processed"
     report = json.loads(dataset.report) if dataset.report else {}
     hdfs_path = (report.get("hdfs") or {}).get("path") if processed else None
+    hive_table = (report.get("hive") or {}).get("table") if hdfs_path else None
     data = {
         "id": dataset.id,
         "filename": dataset.original_filename,
@@ -122,14 +123,14 @@ def dataset_to_dict(dataset: DatasetUpload, *, detail: bool = False) -> dict:
         "farmId": dataset.farm_id,
         "farmName": dataset.farm.name if dataset.farm else None,
         "farmCode": dataset.farm.code if dataset.farm else None,
-        # Each flag is true only when that step really happened. Hive (stage 8) isn't
-        # implemented yet, so it is always false here.
+        # Each flag is true only when that step really happened (HDFS copy verified by
+        # SHA-256; Hive partition counted with HiveQL).
         "stages": {
             "uploaded": dataset.raw_path is not None,
             "validated": processed,
             "preprocessed": processed and dataset.processed_path is not None,
             "hdfs": hdfs_path is not None,
-            "hive": False,
+            "hive": hive_table is not None,
         },
         "readyForHdfs": processed and hdfs_path is None,
         "rowCount": dataset.accepted_rows,
@@ -143,7 +144,7 @@ def dataset_to_dict(dataset: DatasetUpload, *, detail: bool = False) -> dict:
         "createdAt": iso(dataset.created_at),
         "processedAt": iso(dataset.processed_at),
         "hdfsPath": hdfs_path,
-        "hiveTable": None,
+        "hiveTable": hive_table,
         "error": dataset.error,
     }
     if detail:

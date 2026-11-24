@@ -130,6 +130,24 @@ def run_query(
     return [{c: _plain(v) for c, v in zip(columns, row, strict=True)} for row in rows]
 
 
+def run_statement(sql: str, params: dict[str, Any] | None = None, *, name: str = "ddl") -> None:
+    """Runs one HiveQL statement that returns no rows (DDL such as ALTER TABLE ... PARTITION)."""
+    conn = _connect()
+    started = time.monotonic()
+    try:
+        conn.cursor().execute(sql, params or {})
+    except (TException, OSError) as exc:
+        log.warning("Lost the HiveServer2 connection during %s: %s", name, exc)
+        raise HiveUnavailableError() from exc
+    except pyhive_exc.Error as exc:
+        log.error("HiveQL %s failed: %s", name, exc)
+        raise HiveQueryError() from exc
+    finally:
+        with suppress(Exception):
+            conn.close()
+    log.info("HiveQL %s finished in %.2fs", name, time.monotonic() - started)
+
+
 def ping() -> dict[str, Any]:
     """Cheap connectivity check (metadata only, no MapReduce job)."""
     tables = [row["tab_name"] for row in run_query("SHOW TABLES", name="show_tables")]

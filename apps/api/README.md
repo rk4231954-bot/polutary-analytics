@@ -3,8 +3,8 @@
 Authentication, role-based access control, farms, poultry batches, health inspections,
 audit logging (stage 3), CSV dataset ingestion (stage 6: upload, validation, preprocessing,
 local storage), HDFS storage of processed uploads (stage 7, WebHDFS) and analytics computed by
-HiveQL on Apache Hive, with application data in SQLite through SQLAlchemy. Uploads are not yet
-registered as Hive tables (stage 8) and no ML model is served (stage 10).
+HiveQL on Apache Hive, with application data in SQLite through SQLAlchemy. Each stored upload
+is registered as a partition of a Hive external table (stage 8). No ML model is served (stage 10).
 
 This is a standalone Python project (uv-managed). Bun is not needed to run it.
 
@@ -257,10 +257,21 @@ data/processed/farm_id=<farm>/upload_id=<id>/records.csv   cleaned rows, fixed 1
 data/processed/farm_id=<farm>/upload_id=<id>/manifest.json columns + Hive types, row count, sha256
 ```
 
-**HDFS (stage 7).** After a successful preprocess, `records.csv` and `manifest.json` are written
-through WebHDFS to `HDFS_PROCESSED_DIR/farm_id=<farm>/upload_id=<id>/` (default
-`/polutary/processed`). Each file is read back and compared by SHA-256. Only then does the
+**HDFS (stage 7).** After a successful preprocess, `records.csv` (without its header row, so
+Hive counts only data rows) and `_manifest.json` are written through WebHDFS to
+`HDFS_PROCESSED_DIR/farm_id=<farm>/upload_id=<id>/` (default `/polutary/processed`; Hive skips
+files starting with `_`). Each file is read back and compared by SHA-256. Only then does the
 dataset show `stages.hdfs: true` and an `hdfsPath`, and the manifest records `hdfs.stored: true`.
+
+**Hive (stage 8).** The API then runs `CREATE EXTERNAL TABLE IF NOT EXISTS` for
+`HIVE_UPLOADS_TABLE` (default `poultry_uploads`, `PARTITIONED BY (farm_id INT, upload_id INT)`,
+TEXTFILE over `HDFS_PROCESSED_DIR`) and `ALTER TABLE … ADD IF NOT EXISTS PARTITION … LOCATION`
+for the upload's folder. A HiveQL `COUNT(*)` on the partition must equal the accepted row count;
+only then does the dataset show `stages.hive: true` and `hiveTable`. If Hive is down or the
+count differs, the history shows a `hive` failure and the dataset isn't reported as in Hive.
+Deleting a dataset drops its partition. The dashboard analytics still read
+`poultry_records_cleaned` (DS-01); uploaded partitions are queryable in Hive but not yet merged
+into the dashboard figures.
 
 - **HDFS unreachable:** the dataset stays `processed` on local disk, and its history shows an
   `hdfs` **failure** entry. It is never reported as stored.
@@ -277,6 +288,7 @@ Settings:
 | `HDFS_USER` | `HIVE_USERNAME`, then the OS user | user for HDFS writes (simple auth) |
 | `HDFS_PROCESSED_DIR` | `/polutary/processed` | where processed uploads go |
 | `HDFS_DATANODE_HOST` | none | replaces the DataNode hostname in WebHDFS redirects; `127.0.0.1` on the loopback-only native install |
+| `HIVE_UPLOADS_TABLE` | `poultry_uploads` | Hive external table that holds one partition per stored upload |
 
 `records.csv`: UTF-8, comma-separated, header row, empty field = missing, columns `date,
 farm_code, batch_code, temperature_c, humidity_pct, feed_kg, water_l, mortality, avg_weight_g,

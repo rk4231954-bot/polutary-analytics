@@ -103,6 +103,8 @@ class BaseConfig:
         self.HIVE_PASSWORD = os.environ.get("HIVE_PASSWORD", "")
         self.HIVE_DATABASE = os.environ.get("HIVE_DATABASE", "poultry_analytics").strip()
         self.HIVE_AUTH = os.environ.get("HIVE_AUTH", "NONE").strip().upper()
+        # External, partitioned Hive table over the processed uploads in HDFS (stage 8).
+        self.HIVE_UPLOADS_TABLE = os.environ.get("HIVE_UPLOADS_TABLE", "poultry_uploads").strip()
         # NameNode HTTP address (JMX + WebHDFS), read-only use for the Big Data status page.
         self.WEBHDFS_URL = os.environ.get("WEBHDFS_URL", "http://127.0.0.1:9870").strip()
         # --- HDFS storage of processed uploads (WebHDFS). ---
@@ -136,6 +138,8 @@ class BaseConfig:
             raise ConfigError("MAX_UPLOAD_MB must be between 1 and 500.")
         if not HIVE_IDENTIFIER_RE.match(self.HIVE_DATABASE):
             raise ConfigError("HIVE_DATABASE must be a plain Hive identifier (letters, digits, _).")
+        if not HIVE_IDENTIFIER_RE.match(self.HIVE_UPLOADS_TABLE):
+            raise ConfigError("HIVE_UPLOADS_TABLE must be a plain Hive identifier.")
         if self.HIVE_AUTH not in HIVE_AUTH_MODES:
             raise ConfigError(f"HIVE_AUTH must be one of: {', '.join(sorted(HIVE_AUTH_MODES))}.")
         if self.HIVE_PASSWORD and self.HIVE_AUTH not in {"LDAP", "CUSTOM"}:
