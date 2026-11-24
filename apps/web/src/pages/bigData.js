@@ -88,9 +88,9 @@ export default {
                 </div>
               </div>
               <div class="mt-3">${callout({
-                tone: "info",
-                title: "Read-only access",
-                message: "Only read-only statements (SELECT, SHOW, DESCRIBE) are permitted. Every query is validated and executed by the server; nothing runs in the browser.",
+                tone: "warning",
+                title: "Free-form queries are not enabled",
+                message: "The API runs only its fixed, parameterised HiveQL (see the Historical Analytics tabs and the dashboard); it does not execute statements typed here, so Execute and the history below report that the endpoint is unavailable. Run ad-hoc HiveQL with Beeline instead.",
               })}</div>`,
           })}
           ${card({
@@ -207,9 +207,9 @@ export default {
       const totalRows = tables?.reduce((s, t) => s + (t.rowCount || 0), 0);
       setHtml(
         $("[data-status=ingestion]", root),
-        html`${statusRow("Latest ingestion", latest ? html`<span title="${formatDateTime(latest)}">${formatRelative(latest)}</span>` : "No ingestion yet")}
+        html`${statusRow("Latest table data change", latest ? html`<span title="${formatDateTime(latest)}">${formatRelative(latest)}</span>` : "No ingestion yet")}
           ${statusRow("Hive tables", tables ? formatNumber(tables.length) : "—")}
-          ${statusRow("Total records", tables ? formatNumber(totalRows) : "—")}
+          ${statusRow("Total records (Hive statistics)", tables ? formatNumber(totalRows) : "—")}
           <a class="btn btn-secondary btn-sm mt-3" href="#/datasets/upload">${icon("upload-cloud", { size: 14 })}Upload a dataset</a>`,
       );
     }
@@ -234,7 +234,7 @@ export default {
                 <span class="pa-list-item__icon">${icon("table", { size: 15 })}</span>
                 <div class="pa-list-item__body">
                   <div class="d-flex align-items-center gap-2 flex-wrap"><span class="pa-list-item__title pa-mono">${t.name}</span>${t.partitioned ? html`<span class="pa-badge pa-badge--info">Partitioned</span>` : ""}</div>
-                  <p class="pa-list-item__text">${formatNumber(t.rowCount)} rows${t.updatedAt ? ` · updated ${formatRelative(t.updatedAt)}` : ""}</p>
+                  <p class="pa-list-item__text">${t.rowCount === null || t.rowCount === undefined ? "Row count not in Hive statistics" : `${formatNumber(t.rowCount)} rows`}${t.totalSizeBytes != null ? ` · ${formatBytes(t.totalSizeBytes)}` : ""}${t.updatedAt ? ` · updated ${formatRelative(t.updatedAt)}` : ""}</p>
                   ${t.location ? html`<p class="pa-list-item__text pa-mono pa-text-xs text-truncate" title="${t.location}">${t.location}</p>` : ""}
                 </div>
                 <button type="button" class="btn btn-ghost btn-sm" data-preview-table="${t.name}" title="Insert a preview query for ${t.name}">Query</button>

@@ -1,13 +1,17 @@
 /**
- * Hadoop HDFS / Apache Hive status and HiveQL execution. API only — never
- * simulated. The Flask API runs the queries on HiveServer2 through PyHive.
+ * Hadoop HDFS / Apache Hive status. API only — never simulated.
  *
- * GET  /bigdata/status → { hdfs: { connected, namenodeUrl, capacityBytes, usedBytes, remainingBytes, liveDataNodes },
- *                          hive: { connected, host, port, database, version }, latestIngestionAt }
- * GET  /hive/tables    → { tables: [{ name, rowCount, location, partitioned, updatedAt }] }
- * POST /hive/query     { sql } → { columns: string[], rows: any[][], rowCount, durationMs, queryId }
- *                      Only read-only SELECT statements are accepted (validated server-side).
- * GET  /hive/queries?limit → { queries: [{ id, sql, status, durationMs, rowCount, executedBy, executedAt, error }] }
+ * Implemented (administrators only, read-only metadata):
+ * GET  /bigdata/status → { hdfs: { connected, namenodeUrl, state, capacityBytes, usedBytes, remainingBytes,
+ *                          liveDataNodes, filesTotal, blocksTotal },
+ *                          hive: { connected, host, port, database, version: null }, latestIngestionAt }
+ *                      latestIngestionAt = latest change to any Hive table's HDFS directory.
+ * GET  /hive/tables    → { tables: [{ name, type, location, partitioned, rowCount (Hive statistics, may be
+ *                          null), numFiles, totalSizeBytes, updatedAt }] }
+ *
+ * Not implemented (the API runs only fixed, parameterised HiveQL); these calls return 404:
+ * POST /hive/query     { sql } → { columns, rows, rowCount, durationMs, queryId }
+ * GET  /hive/queries?limit → { queries: [...] }
  */
 import { api } from "./apiClient.js";
 import { apiOnly } from "./dataSource.js";

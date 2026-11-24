@@ -125,7 +125,7 @@ function previewBanner() {
     ${icon("info", { size: 16 })}
     <span><strong>Preview mode.</strong> Views marked ${sampleBadge("Sample data")} show illustrative values, not real farm measurements.
     <span class="pa-hide-sm">${signedIn
-      ? "Farms, batches, users and audit logs use the real API; features not built yet fall back to labelled samples."
+      ? "Farms, batches, users, audit logs, activity, HDFS/Hive status and the Hive analytics and alerts use the real API. Predictions and manual readings are not built yet and show labelled samples."
       : "Saving, uploads, Hive queries and model results require the Flask API."}</span></span>
   </div>`;
 }

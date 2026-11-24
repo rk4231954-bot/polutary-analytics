@@ -208,3 +208,19 @@ def test_anonymous_hive_login_is_refused(app, admin):
     app.config.update(HIVE_AUTH="NONE", HIVE_USERNAME="anonymous")
     response = admin.get("/api/analytics/status")
     assert response.get_json()["error"]["code"] == "HIVE_AUTH_FAILED"
+
+
+def test_cluster_status_and_tables_come_from_the_real_cluster(app, admin):
+    status = admin.get("/api/bigdata/status").get_json()
+    assert status["hdfs"]["connected"] is True
+    assert status["hdfs"]["liveDataNodes"] >= 1
+    assert status["hive"]["connected"] is True
+    tables = {t["name"]: t for t in admin.get("/api/hive/tables").get_json()["tables"]}
+    shown = {row["tab_name"] for row in hive(app, "SHOW TABLES")}
+    assert set(tables) == shown
+    cleaned = tables[hive_queries.ANALYTICS_TABLE]
+    assert cleaned["location"].startswith("hdfs://")
+    if cleaned["rowCount"] is not None:  # Hive's stored statistic agrees with a real count
+        (row,) = hive(app, "SELECT COUNT(*) AS n FROM poultry_records_cleaned")
+        assert cleaned["rowCount"] == row["n"]
+    assert status["latestIngestionAt"] == max(t["updatedAt"] for t in tables.values())

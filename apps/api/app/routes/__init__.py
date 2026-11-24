@@ -9,6 +9,7 @@ from app.routes import (
     audit,
     auth,
     batches,
+    cluster,
     datasets,
     farms,
     health,
@@ -25,6 +26,7 @@ BLUEPRINT_MODULES = (
     analytics,
     alerts,
     activity,
+    cluster,
     audit,
 )
 

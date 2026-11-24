@@ -101,6 +101,8 @@ class BaseConfig:
         self.HIVE_PASSWORD = os.environ.get("HIVE_PASSWORD", "")
         self.HIVE_DATABASE = os.environ.get("HIVE_DATABASE", "poultry_analytics").strip()
         self.HIVE_AUTH = os.environ.get("HIVE_AUTH", "NONE").strip().upper()
+        # NameNode HTTP address (JMX + WebHDFS), read-only use for the Big Data status page.
+        self.WEBHDFS_URL = os.environ.get("WEBHDFS_URL", "http://127.0.0.1:9870").strip()
 
     def validate(self) -> None:
         if self.SECRET_KEY.strip().lower() in WEAK_SECRETS or len(self.SECRET_KEY) < 32:
@@ -124,6 +126,8 @@ class BaseConfig:
             raise ConfigError(f"HIVE_AUTH must be one of: {', '.join(sorted(HIVE_AUTH_MODES))}.")
         if self.HIVE_PASSWORD and self.HIVE_AUTH not in {"LDAP", "CUSTOM"}:
             raise ConfigError("HIVE_PASSWORD is only used with HIVE_AUTH=LDAP or CUSTOM.")
+        if not self.WEBHDFS_URL.startswith(("http://", "https://")):
+            raise ConfigError("WEBHDFS_URL must be an http:// or https:// URL.")
         if not 1 <= self.HIVE_PORT <= 65535:
             raise ConfigError("HIVE_PORT must be a valid TCP port.")
         web_dir = (REPO_ROOT / "apps" / "web").resolve()
