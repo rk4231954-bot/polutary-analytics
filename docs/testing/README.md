@@ -20,7 +20,7 @@ same table.
 
 | Suite | Result |
 |---|---|
-| API unit tests | **190 passed**, 0 failed |
+| API unit tests | **192 passed**, 0 failed |
 | API integration tests (real HDFS + HiveServer2) | **13 passed**, 0 failed |
 | ML tests (`apps/ml`) | **3 passed**, 0 failed |
 | Lint (`bun run lint`) | passed |
@@ -67,8 +67,19 @@ same table.
   `processed`, 10 accepted, 0 rejected.
 - A file without `batch_id` was correctly rejected by validation.
 - The processed file is written to HDFS (stage 7). `hdfs dfs -cat` gives the same SHA-256 as the
-  local file, and deleting the dataset removes its HDFS folder. It isn't registered in Hive yet
-  (stage 8), so `hiveTable` is null.
+  local file (minus the header row), and deleting the dataset removes its HDFS folder.
+- Stage 8: the folder is added as a partition of `poultry_uploads`; the HiveQL `COUNT(*)`,
+  `SUM(mortality)` and `MIN(date)` of the partition match the uploaded file, and deleting the
+  dataset drops the partition (`test_hdfs_integration.py`, table `poultry_uploads_test`).
+
+**Final check (2026-11-24, throwaway SQLite database, real Hive):**
+
+- Registration gives 201 with role `analyst`.
+- A wrong password gives 401; the correct one gives 200.
+- The analyst gets 200 on farms, batches, datasets, analytics, alerts and activity, and 403
+  on Big Data, users and audit logs.
+- `create-admin` works. The admin gets 200 on every analytics, Big Data, Hive tables, users
+  and audit-log endpoint.
 
 **HDFS integrity after restarts:** `hdfs fsck /` HEALTHY. The MD5s of the raw CSV, the cleaned
 Parquet file and the test file were unchanged.
