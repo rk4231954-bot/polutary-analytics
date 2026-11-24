@@ -84,6 +84,23 @@ function runCleanups(root) {
   destroyCharts(root);
 }
 
+// Page modules are content-hashed chunks. After a redeploy, a tab opened earlier still asks
+// for the previous build's chunk names, which no longer exist, so `import()` fails. A single
+// full reload fetches the current build. It is attempted once per page per minute, so a real
+// error (e.g. the server being down) is shown instead of a reload loop.
+const RELOAD_KEY = "pa:chunk-reload";
+function reloadForNewBuild(path) {
+  try {
+    const last = JSON.parse(sessionStorage.getItem(RELOAD_KEY) || "null");
+    if (last && last.path === path && Date.now() - last.at < 60_000) return false;
+    sessionStorage.setItem(RELOAD_KEY, JSON.stringify({ path, at: Date.now() }));
+  } catch {
+    return false; // no storage: can't guard against a loop, so don't reload
+  }
+  window.location.reload();
+  return true;
+}
+
 async function handleRoute() {
   const token = ++navToken;
   const { path, query } = parseHash();
@@ -129,7 +146,12 @@ async function handleRoute() {
   } catch (error) {
     if (token !== navToken) return;
     console.error(error);
-    setHtml(root, errorState({ message: "This page failed to load. Check the browser console for details." }, { retry: false }));
+    if (reloadForNewBuild(path)) return;
+    const reason = error?.message || String(error);
+    setHtml(
+      root,
+      errorState({ message: `This page failed to load (${reason}). Reload the page to get the latest version.` }, { retry: false }),
+    );
     return;
   }
   if (token !== navToken) return;
