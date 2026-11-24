@@ -51,6 +51,7 @@ PERMISSIONS: dict[str, frozenset[str]] = {
             "datasets.view",
             "datasets.delete",
             "cluster.view",
+            "reference_data.upload",
         }
     ),
     "farm_manager": frozenset(

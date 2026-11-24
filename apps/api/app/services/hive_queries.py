@@ -307,3 +307,86 @@ SELECT COUNT(*) AS row_count
 FROM {_table(table)}
 WHERE farm_id = %(farm_id)s AND upload_id = %(upload_id)s"""  # noqa: S608 (allow-listed name)
     return sql, {"farm_id": int(farm_id), "upload_id": int(upload_id)}
+
+
+# --- Flock performance reference data (Kaggle "Broiler Performance Index") -----------------
+# Literal "%" is written "%%": PyHive always %-formats the statement.
+# One row per broiler flock at harvest. There are no dates, farms or batches, so these
+# queries are not farm-scoped and are never mixed with poultry_records_cleaned.
+
+FLOCK_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("age_days", "DOUBLE"),
+    ("body_weight_kg", "DOUBLE"),
+    ("harvest_pct", "DOUBLE"),
+    ("depletion_pct", "DOUBLE"),
+    ("performance_index", "DOUBLE"),
+    ("source_line", "INT"),
+)
+
+
+def create_flock_table(table: str, location: str) -> Query:
+    cols = ",\n    ".join(f"`{name}` {kind}" for name, kind in FLOCK_COLUMNS)
+    sql = f"""
+CREATE EXTERNAL TABLE IF NOT EXISTS {_table(table)} (
+    {cols}
+)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+LOCATION %(location)s"""
+    return sql, {"location": location}
+
+
+def flock_table_exists(table: str) -> Query:
+    return "SHOW TABLES LIKE %(name)s", {"name": _table(table)}
+
+
+def count_flock_rows(table: str) -> Query:
+    return f"SELECT COUNT(*) AS row_count FROM {_table(table)}", {}  # noqa: S608 (allow-listed)
+
+
+def flock_summary(table: str) -> Query:
+    sql = f"""
+SELECT
+    COUNT(*)                                    AS flocks,
+    ROUND(AVG(age_days), 2)                     AS avg_age_days,
+    ROUND(MIN(age_days), 2)                     AS min_age_days,
+    ROUND(MAX(age_days), 2)                     AS max_age_days,
+    ROUND(AVG(body_weight_kg), 3)               AS avg_body_weight_kg,
+    ROUND(MIN(body_weight_kg), 3)               AS min_body_weight_kg,
+    ROUND(MAX(body_weight_kg), 3)               AS max_body_weight_kg,
+    ROUND(AVG(depletion_pct), 2)                AS avg_depletion_pct,
+    ROUND(MIN(depletion_pct), 2)                AS min_depletion_pct,
+    ROUND(MAX(depletion_pct), 2)                AS max_depletion_pct,
+    ROUND(AVG(harvest_pct), 2)                  AS avg_harvest_pct,
+    ROUND(AVG(performance_index), 1)            AS avg_performance_index,
+    ROUND(MIN(performance_index), 1)            AS min_performance_index,
+    ROUND(MAX(performance_index), 1)            AS max_performance_index,
+    ROUND(CORR(body_weight_kg, performance_index), 3) AS corr_weight_index,
+    ROUND(CORR(depletion_pct, performance_index), 3)  AS corr_depletion_index,
+    ROUND(CORR(age_days, performance_index), 3)       AS corr_age_index
+FROM {_table(table)}"""  # noqa: S608 (allow-listed name, no user input)
+    return sql, {}
+
+
+def flock_depletion_bands(table: str) -> Query:
+    sql = f"""
+SELECT band, band_order,
+       COUNT(*)                              AS flocks,
+       ROUND(AVG(body_weight_kg), 3)         AS avg_body_weight_kg,
+       ROUND(AVG(age_days), 2)               AS avg_age_days,
+       ROUND(AVG(performance_index), 1)      AS avg_performance_index
+FROM (
+    SELECT body_weight_kg, age_days, performance_index,
+           CASE WHEN depletion_pct < 3 THEN 'Below 3%%'
+                WHEN depletion_pct < 5 THEN '3%% to 5%%'
+                WHEN depletion_pct < 8 THEN '5%% to 8%%'
+                ELSE '8%% and above' END     AS band,
+           CASE WHEN depletion_pct < 3 THEN 1
+                WHEN depletion_pct < 5 THEN 2
+                WHEN depletion_pct < 8 THEN 3
+                ELSE 4 END                   AS band_order
+    FROM {_table(table)}
+) banded
+GROUP BY band, band_order
+ORDER BY band_order"""  # noqa: S608 (allow-listed name, no user input)
+    return sql, {}

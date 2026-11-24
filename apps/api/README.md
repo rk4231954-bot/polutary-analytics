@@ -294,6 +294,23 @@ Settings:
 farm_code, batch_code, temperature_c, humidity_pct, feed_kg, water_l, mortality, avg_weight_g,
 bird_count, source_line` (`source_line` = line in the original upload).
 
+## Flock performance reference data (Kaggle DS-02)
+
+| Method | Path | Access | Result |
+|---|---|---|---|
+| POST | `/api/flock-performance` | 🔒✎ `reference_data.upload` (admin) | multipart `file`: the Kaggle `PS Performance.csv` (header `Umur,BW,%Panen,Deplesi,IP`) → `201 {source, report, hdfs, hive}`. Replaces the stored copy. · 400 `VALIDATION_ERROR` · 415 · 413 · 503 `HDFS_UNAVAILABLE`/`HDFS_DISABLED` · 502 `HIVE_COUNT_MISMATCH` |
+| GET | `/api/flock-performance/summary` | 🔒 `analytics.view` | `{loaded: false, dataset, source}`, or `{loaded: true, flocks, ageDays, bodyWeightKg, depletionPct, harvestPct, performanceIndex, correlations, depletionBands[]}` from HiveQL |
+
+- **Validation:** the exact header; numeric values; impossible values are rejected (for example a
+  percentage over 100). Nothing is filled in or changed, and exact duplicates are kept and counted.
+- **HDFS:** rows are written headerless to `HDFS_PROCESSED_DIR/flock_performance/records.csv`,
+  plus `_manifest.json` (source, SHA-256s, counts). Both are read back and checked.
+- **Hive:** external table `HIVE_FLOCK_TABLE` (default `flock_performance`). The HiveQL
+  `COUNT(*)` must equal the accepted row count.
+- **Scope:** not farm-scoped, because the data has no farms. It's public Kaggle data, so any role
+  with `analytics.view` can read the summary.
+- **Audit log:** every upload is logged as `flock_performance.upload`.
+
 ## Analytics on Apache Hive (stage 9)
 
 Analytics endpoints run **HiveQL on HiveServer2** through PyHive and return the query

@@ -12,6 +12,7 @@ from app.routes import (
     cluster,
     datasets,
     farms,
+    flock_performance,
     health,
     users,
 )
@@ -24,6 +25,7 @@ BLUEPRINT_MODULES = (
     batches,
     datasets,
     analytics,
+    flock_performance,
     alerts,
     activity,
     cluster,
