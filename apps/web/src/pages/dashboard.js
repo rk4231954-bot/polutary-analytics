@@ -130,13 +130,12 @@ export default {
             flush: true,
           })}
         </section>
-        <section class="pa-section" aria-label="Broiler flock benchmarks">
-          ${card({
-            title: "Broiler flock benchmarks (Kaggle)",
-            subtitle: "Public flock-level harvest data, analysed with HiveQL. Not your farms' records and not filtered by farm or date.",
-            icon: "bar-chart",
-            body: html`<div data-flock>${loadingState("Loading flock benchmarks…", { compact: true })}</div>`,
-          })}
+        <section class="pa-section" aria-labelledby="flock-heading">
+          <div class="pa-section-head">
+            <h2 class="pa-section-title" id="flock-heading">Broiler flock benchmarks <span class="pa-text-2 fw-normal pa-text-sm">· Kaggle dataset, HiveQL results</span></h2>
+            <span class="pa-text-2 pa-text-sm" data-flock-table></span>
+          </div>
+          <div data-flock>${loadingState("Loading flock benchmarks…", { compact: true })}</div>
         </section>`,
     );
 
@@ -313,44 +312,96 @@ export default {
     function renderFlock(summary) {
       const target = $("[data-flock]", root);
       const ds = summary.dataset;
-      const sourceLine = html`<p class="pa-text-2 pa-text-sm mb-0">Source: <a href="${ds.url}" target="_blank" rel="noopener noreferrer">${ds.name}</a>
-        (${ds.publisher}, ${ds.license}, file “${ds.file}”). ${ds.note}</p>`;
+      setHtml($("[data-flock-table]", root), `Hive table ${summary.source.table}`);
+      const sourceNote = html`<p class="pa-text-2 pa-text-sm mt-3 mb-0">Source: <a href="${ds.url}" target="_blank" rel="noopener noreferrer">${ds.name}</a>
+        (${ds.publisher}, ${ds.license}, file “${ds.file}”). ${ds.note} These are public benchmark flocks, not your farms' records, so the farm and date filters above don't apply.</p>`;
       if (!summary.loaded) {
         setHtml(
           target,
-          html`${emptyState({
-            icon: "upload-cloud",
-            title: "Flock dataset not loaded",
-            message: "An administrator can upload PS Performance.csv in Data Management → CSV Upload. It is stored in HDFS and queried in Hive.",
-            compact: true,
-          })}${sourceLine}`,
+          card({
+            body: html`${emptyState({
+              icon: "upload-cloud",
+              title: "Flock dataset not loaded",
+              message: "An administrator can upload PS Performance.csv in Data Management → CSV Upload. It is stored in HDFS and queried in Hive.",
+              compact: true,
+            })}${sourceNote}`,
+          }),
         );
         return;
       }
-      const r = (v) => (v === null || v === undefined ? "n/a" : formatNumber(v, { decimals: 2 }));
-      const stat = (label, value, hint) =>
-        html`<div class="col-6 col-md-3"><div class="pa-text-2 pa-text-sm">${label}</div><div class="fs-5 fw-semibold">${value}</div><div class="pa-text-2 pa-text-sm">${hint}</div></div>`;
+      const n = (v, decimals) => formatNumber(v, { decimals });
+      const r = (v) => (v === null || v === undefined ? "n/a" : n(v, 3));
+      const bands = summary.depletionBands;
       setHtml(
         target,
-        html`<div class="row g-3 mb-3">
-            ${stat("Flocks", formatNumber(summary.flocks), `${formatNumber(summary.ageDays.min, { decimals: 1 })}–${formatNumber(summary.ageDays.max, { decimals: 1 })} days at harvest`)}
-            ${stat("Average body weight", `${formatNumber(summary.bodyWeightKg.avg, { decimals: 2 })} kg`, `range ${formatNumber(summary.bodyWeightKg.min, { decimals: 2 })}–${formatNumber(summary.bodyWeightKg.max, { decimals: 2 })} kg`)}
-            ${stat("Average depletion", formatPercent(summary.depletionPct.avg, 2), "dead + culled birds")}
-            ${stat("Average performance index", formatNumber(summary.performanceIndex.avg, { decimals: 1 }), `range ${formatNumber(summary.performanceIndex.min, { decimals: 0 })}–${formatNumber(summary.performanceIndex.max, { decimals: 0 })}`)}
+        html`<div class="pa-grid pa-grid--kpi">
+            ${kpiCard({ label: "Flocks analysed", value: n(summary.flocks, 0), icon: "bird", footnote: "One row per flock at harvest" })}
+            ${kpiCard({ label: "Average harvest age", value: n(summary.ageDays.avg, 1), unit: "days", icon: "calendar", tone: "info", footnote: `Range ${n(summary.ageDays.min, 1)}–${n(summary.ageDays.max, 1)} days` })}
+            ${kpiCard({ label: "Average body weight", value: n(summary.bodyWeightKg.avg, 2), unit: "kg", icon: "scale", footnote: `Range ${n(summary.bodyWeightKg.min, 2)}–${n(summary.bodyWeightKg.max, 2)} kg` })}
+            ${kpiCard({ label: "Average depletion", value: formatPercent(summary.depletionPct.avg, 2), icon: "heart-pulse", tone: "danger", footnote: `Dead + culled · range ${formatPercent(summary.depletionPct.min, 2)}–${formatPercent(summary.depletionPct.max, 2)}` })}
+            ${kpiCard({ label: "Average harvested", value: formatPercent(summary.harvestPct.avg, 1), icon: "layers", tone: "warning", footnote: "Share of flock harvested" })}
+            ${kpiCard({ label: "Average performance index", value: n(summary.performanceIndex.avg, 1), icon: "trending-up", tone: "info", footnote: `EPEF · range ${n(summary.performanceIndex.min, 0)}–${n(summary.performanceIndex.max, 0)}` })}
           </div>
-          <div class="pa-text-sm mb-2"><strong>Performance index by depletion band</strong> (bars: average index; labels: number of flocks)</div>
-          <div data-flock-chart></div>
-          <p class="pa-text-sm mt-3 mb-1">Pearson correlation with the performance index (Hive <code>CORR()</code>): body weight r = ${r(summary.correlations.bodyWeightVsIndex)},
-            depletion r = ${r(summary.correlations.depletionVsIndex)}, age r = ${r(summary.correlations.ageVsIndex)}. These describe association in this dataset only, not cause and effect.</p>
-          ${sourceLine}
-          <p class="pa-text-2 pa-text-sm mb-0">Hive table: ${summary.source.table}</p>`,
+          <div class="pa-grid pa-grid--2 mt-3">
+            ${card({
+              title: "Performance index by depletion band",
+              subtitle: "Average EPEF per band; flock count in brackets",
+              icon: "bar-chart",
+              body: html`<div data-flock-chart="index"></div>`,
+            })}
+            ${card({
+              title: "Body weight by depletion band",
+              subtitle: "Average body weight at harvest per band (kg)",
+              icon: "scale",
+              body: html`<div data-flock-chart="weight"></div>`,
+            })}
+          </div>
+          <div class="pa-grid pa-grid--main-side mt-3">
+            ${card({
+              title: "Depletion bands",
+              subtitle: "GROUP BY over every flock in Hive",
+              icon: "table",
+              flush: true,
+              body: html`<div class="pa-table-wrap"><table class="pa-table" aria-label="Flock results by depletion band">
+                <thead><tr><th scope="col">Depletion band</th><th scope="col" class="text-end">Flocks</th><th scope="col" class="text-end">Avg age (days)</th><th scope="col" class="text-end">Avg body weight (kg)</th><th scope="col" class="text-end">Avg performance index</th></tr></thead>
+                <tbody>${bands.map(
+                  (b) => html`<tr><th scope="row">${b.band}</th><td class="text-end">${n(b.flocks, 0)}</td><td class="text-end">${n(b.avgAgeDays, 2)}</td><td class="text-end">${n(b.avgBodyWeightKg, 3)}</td><td class="text-end">${n(b.avgPerformanceIndex, 1)}</td></tr>`,
+                )}</tbody>
+              </table></div>`,
+            })}
+            ${card({
+              title: "Correlation with performance index",
+              subtitle: "Pearson r from Hive CORR(); association, not cause",
+              icon: "line-chart",
+              flush: true,
+              body: html`<div class="pa-table-wrap"><table class="pa-table" aria-label="Correlation with performance index">
+                <thead><tr><th scope="col">Measure</th><th scope="col" class="text-end">r</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row">Body weight</th><td class="text-end">${r(summary.correlations.bodyWeightVsIndex)}</td></tr>
+                  <tr><th scope="row">Depletion</th><td class="text-end">${r(summary.correlations.depletionVsIndex)}</td></tr>
+                  <tr><th scope="row">Harvest age</th><td class="text-end">${r(summary.correlations.ageVsIndex)}</td></tr>
+                </tbody>
+              </table></div>`,
+            })}
+          </div>
+          ${sourceNote}`,
       );
-      setHtml($("[data-flock-chart]", target), chartCanvas("canvas-flock", { label: "Average performance index by depletion band" }));
-      barChart($("#canvas-flock", target), {
-        labels: summary.depletionBands.map((b) => `${b.band} (${b.flocks})`),
-        datasets: [{ label: "Average performance index", data: summary.depletionBands.map((b) => b.avgPerformanceIndex) }],
+      const labels = bands.map((b) => `${b.band} (${b.flocks})`);
+      setHtml($('[data-flock-chart="index"]', target), chartCanvas("canvas-flock-index", { label: "Average performance index by depletion band" }));
+      barChart($("#canvas-flock-index", target), {
+        labels,
+        datasets: [{ label: "Average performance index", data: bands.map((b) => b.avgPerformanceIndex) }],
         decimals: 1,
         yTitle: "Performance index",
+        showLegend: false,
+      });
+      setHtml($('[data-flock-chart="weight"]', target), chartCanvas("canvas-flock-weight", { label: "Average body weight by depletion band" }));
+      barChart($("#canvas-flock-weight", target), {
+        labels,
+        datasets: [{ label: "Average body weight", data: bands.map((b) => b.avgBodyWeightKg), color: palette[1] }],
+        unit: "kg",
+        decimals: 3,
+        yTitle: "kg",
         showLegend: false,
       });
     }
