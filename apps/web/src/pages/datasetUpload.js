@@ -12,6 +12,7 @@ import { icon } from "../components/icons.js";
 import { datasetReportCard, previewTable } from "../components/datasetReport.js";
 import { emptyState, errorState, loadingState } from "../components/states.js";
 import { createDataTable } from "../components/dataTable.js";
+import { bindFlockUpload, flockUploadCard } from "../components/flockUpload.js";
 import { confirmDialog } from "../components/modal.js";
 import { toast } from "../components/toast.js";
 import { callout, card, pageHeader, statusBadge } from "../components/ui.js";
@@ -135,8 +136,11 @@ export default {
           actions: html`<button type="button" class="btn btn-ghost btn-sm" data-action="reload-recent">${icon("refresh", { size: 14 })}Refresh</button>`,
           body: html`<div data-recent>${loadingState("Loading uploads…", { compact: true })}</div>`,
           flush: true,
-        })}`,
+        })}
+        ${can("reference_data.upload") ? html`<div data-flock-upload>${flockUploadCard()}</div>` : ""}`,
     );
+    const flockHost = $("[data-flock-upload]", root);
+    if (flockHost) ctx.onCleanup(bindFlockUpload(flockHost));
 
     const fileArea = $("[data-file-area]", root);
     const analysis = $("[data-analysis]", root);

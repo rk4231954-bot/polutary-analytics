@@ -10,6 +10,7 @@ import { emptyState, errorState, loadingState, skeletonKpis } from "../component
 import { card, kpiCard, pageHeader, selectOptions, sourceBadge, trend } from "../components/ui.js";
 import { getActivity, getAlerts, getDailyRecords, getFarmComparison, getGrowthCurves, getSummary } from "../services/analytics.js";
 import { listFarms } from "../services/farms.js";
+import { getFlockSummary } from "../services/flockPerformance.js";
 import { $, html, on, setHtml } from "../utils/dom.js";
 import { formatDate, formatNumber, formatPercent, formatRelative, formatWeightKg } from "../utils/format.js";
 import "../styles/pages/dashboard.css";
@@ -127,6 +128,14 @@ export default {
             actions: html`<span data-activity-badge></span>`,
             body: html`<div data-activity>${loadingState("Loading activity…", { compact: true })}</div>`,
             flush: true,
+          })}
+        </section>
+        <section class="pa-section" aria-label="Broiler flock benchmarks">
+          ${card({
+            title: "Broiler flock benchmarks (Kaggle)",
+            subtitle: "Public flock-level harvest data, analysed with HiveQL. Not your farms' records and not filtered by farm or date.",
+            icon: "bar-chart",
+            body: html`<div data-flock>${loadingState("Loading flock benchmarks…", { compact: true })}</div>`,
           })}
         </section>`,
     );
@@ -301,6 +310,63 @@ export default {
       );
     }
 
+    function renderFlock(summary) {
+      const target = $("[data-flock]", root);
+      const ds = summary.dataset;
+      const sourceLine = html`<p class="pa-text-2 pa-text-sm mb-0">Source: <a href="${ds.url}" target="_blank" rel="noopener noreferrer">${ds.name}</a>
+        (${ds.publisher}, ${ds.license}, file “${ds.file}”). ${ds.note}</p>`;
+      if (!summary.loaded) {
+        setHtml(
+          target,
+          html`${emptyState({
+            icon: "upload-cloud",
+            title: "Flock dataset not loaded",
+            message: "An administrator can upload PS Performance.csv in Data Management → CSV Upload. It is stored in HDFS and queried in Hive.",
+            compact: true,
+          })}${sourceLine}`,
+        );
+        return;
+      }
+      const r = (v) => (v === null || v === undefined ? "n/a" : formatNumber(v, { decimals: 2 }));
+      const stat = (label, value, hint) =>
+        html`<div class="col-6 col-md-3"><div class="pa-text-2 pa-text-sm">${label}</div><div class="fs-5 fw-semibold">${value}</div><div class="pa-text-2 pa-text-sm">${hint}</div></div>`;
+      setHtml(
+        target,
+        html`<div class="row g-3 mb-3">
+            ${stat("Flocks", formatNumber(summary.flocks), `${formatNumber(summary.ageDays.min, { decimals: 1 })}–${formatNumber(summary.ageDays.max, { decimals: 1 })} days at harvest`)}
+            ${stat("Average body weight", `${formatNumber(summary.bodyWeightKg.avg, { decimals: 2 })} kg`, `range ${formatNumber(summary.bodyWeightKg.min, { decimals: 2 })}–${formatNumber(summary.bodyWeightKg.max, { decimals: 2 })} kg`)}
+            ${stat("Average depletion", formatPercent(summary.depletionPct.avg, 2), "dead + culled birds")}
+            ${stat("Average performance index", formatNumber(summary.performanceIndex.avg, { decimals: 1 }), `range ${formatNumber(summary.performanceIndex.min, { decimals: 0 })}–${formatNumber(summary.performanceIndex.max, { decimals: 0 })}`)}
+          </div>
+          <div class="pa-text-sm mb-2"><strong>Performance index by depletion band</strong> (bars: average index; labels: number of flocks)</div>
+          <div data-flock-chart></div>
+          <p class="pa-text-sm mt-3 mb-1">Pearson correlation with the performance index (Hive <code>CORR()</code>): body weight r = ${r(summary.correlations.bodyWeightVsIndex)},
+            depletion r = ${r(summary.correlations.depletionVsIndex)}, age r = ${r(summary.correlations.ageVsIndex)}. These describe association in this dataset only, not cause and effect.</p>
+          ${sourceLine}
+          <p class="pa-text-2 pa-text-sm mb-0">Hive table: ${summary.source.table}</p>`,
+      );
+      setHtml($("[data-flock-chart]", target), chartCanvas("canvas-flock", { label: "Average performance index by depletion band" }));
+      barChart($("#canvas-flock", target), {
+        labels: summary.depletionBands.map((b) => `${b.band} (${b.flocks})`),
+        datasets: [{ label: "Average performance index", data: summary.depletionBands.map((b) => b.avgPerformanceIndex) }],
+        decimals: 1,
+        yTitle: "Performance index",
+        showLegend: false,
+      });
+    }
+
+    async function loadFlock() {
+      setHtml($("[data-flock]", root), loadingState("Loading flock benchmarks…", { compact: true }));
+      try {
+        const summary = await getFlockSummary();
+        if (ctx.isCurrent()) renderFlock(summary);
+      } catch (error) {
+        if (!ctx.isCurrent()) return;
+        console.error(error);
+        setHtml($("[data-flock]", root), errorState(error, { compact: true }));
+      }
+    }
+
     /** Runs a loader and renders its result, or an error state into `selector`. */
     async function section(selector, loader, onData) {
       try {
@@ -333,6 +399,7 @@ export default {
         }),
         section("[data-alerts]", () => getAlerts({ farmId: state.farmId, limit: 6 }), renderAlerts),
         section("[data-activity]", () => getActivity({ limit: 6 }), renderActivity),
+        loadFlock(),
       ]);
     }
 
