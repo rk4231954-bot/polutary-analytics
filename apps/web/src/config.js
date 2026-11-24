@@ -18,14 +18,14 @@ export const config = Object.freeze({
   apiBaseUrl: (env.VITE_API_BASE_URL || "/api").replace(/\/+$/, ""),
   /**
    * Preview mode. When true, read-only views show clearly labelled SAMPLE data
-   * so the UI can be reviewed before the backend exists. Defaults to on for the
-   * Vite dev server and off for production builds. Set VITE_DEMO_MODE=false
-   * once the Flask API is connected.
+   * so the UI can be reviewed before the backend exists. Off unless
+   * VITE_DEMO_MODE=true: the Flask API is connected, so pages show real API
+   * results or the real error, never sample figures.
    *
    * Preview mode never applies to: authentication, saving data, CSV upload,
    * HDFS/Hive status, HiveQL execution or ML model evaluation.
    */
-  demoMode: readBool(env.VITE_DEMO_MODE, Boolean(env.DEV)),
+  demoMode: readBool(env.VITE_DEMO_MODE, false),
   requestTimeoutMs: Number(env.VITE_API_TIMEOUT_MS) || 20000,
   maxUploadMb: Number(env.VITE_MAX_UPLOAD_MB) || 50,
 });

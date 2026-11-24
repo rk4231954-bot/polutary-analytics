@@ -23,7 +23,7 @@ All settings are read in `src/config.js` from `VITE_*` variables in the repo-roo
 |---|---|---|
 | `VITE_API_BASE_URL` | `/api` | API base URL. A relative path uses the dev proxy. |
 | `VITE_DEV_API_TARGET` | `http://127.0.0.1:5000` | Where the dev proxy forwards `/api`. |
-| `VITE_DEMO_MODE` | `true` in dev, `false` in builds | Preview mode (see below). |
+| `VITE_DEMO_MODE` | `false` | Preview mode (see below). Opt-in only. |
 | `VITE_API_TIMEOUT_MS` | `20000` | Request timeout. |
 | `VITE_MAX_UPLOAD_MB` | `50` | Client-side CSV size limit (the server enforces its own). |
 
@@ -35,7 +35,7 @@ Preview mode lets you review the interface before the backend exists:
 - These **never** use sample data: sign-in, every save action, CSV upload and the ingestion pipeline, HDFS/Hive status, HiveQL execution, model evaluation metrics, and reports. They always call the real API, and show an honest "backend not connected" state when it's unavailable.
 - If the API can't be reached, you browse as an unauthenticated **Preview visitor**. This grants no server access.
 
-Set `VITE_DEMO_MODE=false` once the Flask API is running.
+It's off by default, because the Flask API is connected. Pages then show real API (Hive) results, or the real error when the API is down. Set `VITE_DEMO_MODE=true` only to review the UI without a backend.
 
 ## Structure
 
