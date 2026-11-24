@@ -52,7 +52,7 @@ def test_upload_validates_preprocesses_and_stores(app, farm_setup):
         "uploaded": True,
         "validated": True,
         "preprocessed": True,
-        "hdfs": False,  # stage 7: not implemented, never claimed
+        "hdfs": False,  # HDFS is off in unit tests (test_datasets_hdfs.py covers it)
         "hive": False,
     }
     assert (dataset["totalRows"], dataset["rowCount"], dataset["rejectedRows"]) == (3, 2, 1)
@@ -62,7 +62,9 @@ def test_upload_validates_preprocesses_and_stores(app, farm_setup):
         "validation",
         "preprocessing",
         "local_storage",
+        "hdfs",
     ]
+    assert dataset["history"][-1]["status"] == "warning"  # HDFS_ENABLED=false, not hidden
     report = dataset["report"]
     assert report["summary"]["acceptedRows"] == 2
     assert any(e["code"] == "not_a_number:temperature_c" for e in report["errors"])

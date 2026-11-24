@@ -6,6 +6,7 @@ which must always be provided (except in the automated test configuration).
 
 from __future__ import annotations
 
+import getpass
 import os
 import re
 from datetime import timedelta
@@ -17,6 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 WEAK_SECRETS = {"", "change-me", "changeme", "secret", "dev", "development"}
 
 HIVE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
+HDFS_DIR_RE = re.compile(r"^(/[A-Za-z0-9_-]+)+$")
 HIVE_AUTH_MODES = {"NONE", "NOSASL", "LDAP", "CUSTOM"}
 
 
@@ -103,6 +105,18 @@ class BaseConfig:
         self.HIVE_AUTH = os.environ.get("HIVE_AUTH", "NONE").strip().upper()
         # NameNode HTTP address (JMX + WebHDFS), read-only use for the Big Data status page.
         self.WEBHDFS_URL = os.environ.get("WEBHDFS_URL", "http://127.0.0.1:9870").strip()
+        # --- HDFS storage of processed uploads (WebHDFS). ---
+        self.HDFS_ENABLED = _bool("HDFS_ENABLED", True)
+        # HDFS user for writes (simple auth). Defaults to the Hive user, then the OS user.
+        self.HDFS_USER = (
+            os.environ.get("HDFS_USER", "").strip() or self.HIVE_USERNAME or getpass.getuser()
+        )
+        # Host to use for DataNode transfers instead of the hostname the NameNode returns
+        # (127.0.0.1 for the loopback-only native install). Empty = use it unchanged.
+        self.HDFS_DATANODE_HOST = os.environ.get("HDFS_DATANODE_HOST", "").strip()
+        self.HDFS_PROCESSED_DIR = os.environ.get(
+            "HDFS_PROCESSED_DIR", "/polutary/processed"
+        ).strip()
 
     def validate(self) -> None:
         if self.SECRET_KEY.strip().lower() in WEAK_SECRETS or len(self.SECRET_KEY) < 32:
@@ -126,6 +140,14 @@ class BaseConfig:
             raise ConfigError(f"HIVE_AUTH must be one of: {', '.join(sorted(HIVE_AUTH_MODES))}.")
         if self.HIVE_PASSWORD and self.HIVE_AUTH not in {"LDAP", "CUSTOM"}:
             raise ConfigError("HIVE_PASSWORD is only used with HIVE_AUTH=LDAP or CUSTOM.")
+        if not HDFS_DIR_RE.match(self.HDFS_PROCESSED_DIR) or ".." in self.HDFS_PROCESSED_DIR:
+            raise ConfigError(
+                "HDFS_PROCESSED_DIR must be an absolute HDFS path such as /polutary/processed."
+            )
+        if self.HDFS_DATANODE_HOST and not re.fullmatch(r"[A-Za-z0-9.-]+", self.HDFS_DATANODE_HOST):
+            raise ConfigError("HDFS_DATANODE_HOST must be a host name or IPv4 address.")
+        if not HIVE_IDENTIFIER_RE.match(self.HDFS_USER):
+            raise ConfigError("HDFS_USER must be a plain user name.")
         if not self.WEBHDFS_URL.startswith(("http://", "https://")):
             raise ConfigError("WEBHDFS_URL must be an http:// or https:// URL.")
         if not 1 <= self.HIVE_PORT <= 65535:

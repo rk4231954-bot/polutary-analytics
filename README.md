@@ -10,7 +10,8 @@ Farm managers upload poultry production CSV files. The system validates and prep
 
 Stages 1–6 are done: frontend, Flask API, SQLite app data, authentication and roles, and CSV
 ingestion. The dashboard analytics and alerts are computed by HiveQL on a native Hadoop +
-Hive install. Uploads aren't written to HDFS yet (stage 7). ML (stage 10) hasn't started.
+Hive install. Uploaded CSVs are written to HDFS (stage 7) but not yet registered in Hive
+(stage 8). No ML model is served: the current data can't support one (stage 10).
 The roadmap is in [CLAUDE.md](CLAUDE.md). The dataset currently in Hive is a small
 development dataset whose origin is still being documented; see
 [`docs/research/datasets.md`](docs/research/datasets.md).

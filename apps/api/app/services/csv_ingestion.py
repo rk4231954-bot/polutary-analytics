@@ -38,6 +38,8 @@ from app.services.csv_schema import (
 MAX_EXAMPLES = 10
 INT_MAX = 2_147_483_647  # Hive INT
 DELIMITERS = (",", ";", "\t", "|")
+# Median weight below this (in grams) is lighter than a day-old chick: probably kilograms.
+KG_LIKE_WEIGHT_G = 20.0
 
 
 class CsvFormatError(ValueError):
@@ -533,6 +535,21 @@ def ingest(
             "mortality_exceeds_birds",
             "Daily mortality is higher than the live bird count; please check.",
             line=int(row["source_line"]),
+        )
+
+    # avg_weight_g is in grams. A median below 20 g is lighter than a day-old chick (about
+    # 35-45 g), so the column was most likely given in kilograms. Values are not converted
+    # (that would be a guess); the uploader is told instead.
+    weights = accepted["avg_weight_g"].dropna()
+    if len(weights) and float(weights.median()) < KG_LIKE_WEIGHT_G:
+        report.add(
+            "warnings",
+            "weight_looks_like_kg",
+            f"Average weight values look like kilograms (median {float(weights.median()):g}), "
+            "but this column is in grams. They were kept as given; convert them to grams "
+            "(× 1000) and upload again for correct weight figures.",
+            int(len(weights)),
+            scope="column",
         )
 
     processed = accepted.sort_values(["date", "batch_code", "source_line"]).reset_index(drop=True)

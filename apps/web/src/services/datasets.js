@@ -1,16 +1,16 @@
 /**
- * Dataset ingestion (stage 6). API only — never simulated, not even in preview mode.
+ * Dataset ingestion (stages 6–7). API only — never simulated, not even in preview mode.
  *
  * POST   /datasets                 multipart: file, mapping (JSON {field: column}), farmId? → 201 { dataset }
  *                                  Validation and preprocessing run during the request; the returned
- *                                  dataset is final: status "processed" (ready for HDFS) or "failed".
+ *                                  dataset is final: status "processed" (stored locally and, if HDFS was reachable, in HDFS) or "failed".
  * GET    /datasets?limit&farm_id   → { datasets: Dataset[] }
  * GET    /datasets/:id             → { dataset } (with report and history)
  * GET    /datasets/:id/preview?kind=processed|rejected&offset&limit → { preview: {columns, rows, total, offset} }
  * DELETE /datasets/:id             → 204
  * Dataset: { id, filename, status: "uploaded"|"validating"|"processing"|"processed"|"failed",
- *            stages: { uploaded, validated, preprocessed, hdfs, hive } (set by the backend; hdfs/hive stay
- *            false until stages 7–8 exist), farmId, farmName, rowCount, totalRows, rejectedRows,
+ *            stages: { uploaded, validated, preprocessed, hdfs, hive } (set by the backend; hdfs is true only
+ *            when the HDFS copy was read back and matched; hive stays false until stage 8), hdfsPath, farmId, farmName, rowCount, totalRows, rejectedRows,
  *            duplicateRows, errorCount, warningCount, sizeBytes, uploadedBy, createdAt, processedAt, error,
  *            report?, history? }
  */

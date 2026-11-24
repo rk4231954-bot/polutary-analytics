@@ -113,6 +113,8 @@ def audit_to_dict(entry: AuditLog) -> dict:
 
 def dataset_to_dict(dataset: DatasetUpload, *, detail: bool = False) -> dict:
     processed = dataset.status == "processed"
+    report = json.loads(dataset.report) if dataset.report else {}
+    hdfs_path = (report.get("hdfs") or {}).get("path") if processed else None
     data = {
         "id": dataset.id,
         "filename": dataset.original_filename,
@@ -120,16 +122,16 @@ def dataset_to_dict(dataset: DatasetUpload, *, detail: bool = False) -> dict:
         "farmId": dataset.farm_id,
         "farmName": dataset.farm.name if dataset.farm else None,
         "farmCode": dataset.farm.code if dataset.farm else None,
-        # Each flag is true only when that step really happened. HDFS (stage 7) and
-        # Hive (stage 8) are not implemented yet, so they are always false here.
+        # Each flag is true only when that step really happened. Hive (stage 8) isn't
+        # implemented yet, so it is always false here.
         "stages": {
             "uploaded": dataset.raw_path is not None,
             "validated": processed,
             "preprocessed": processed and dataset.processed_path is not None,
-            "hdfs": False,
+            "hdfs": hdfs_path is not None,
             "hive": False,
         },
-        "readyForHdfs": processed,
+        "readyForHdfs": processed and hdfs_path is None,
         "rowCount": dataset.accepted_rows,
         "totalRows": dataset.total_rows,
         "rejectedRows": dataset.rejected_rows,
@@ -140,7 +142,7 @@ def dataset_to_dict(dataset: DatasetUpload, *, detail: bool = False) -> dict:
         "uploadedBy": dataset.uploaded_by.full_name if dataset.uploaded_by else None,
         "createdAt": iso(dataset.created_at),
         "processedAt": iso(dataset.processed_at),
-        "hdfsPath": None,
+        "hdfsPath": hdfs_path,
         "hiveTable": None,
         "error": dataset.error,
     }

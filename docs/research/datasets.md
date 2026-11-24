@@ -111,12 +111,12 @@ The table and its empty directory have been left as they are (nothing was droppe
 recreated). If it's no longer wanted it can be dropped later with the author's approval, or
 it can become the target of the stage 7–8 load (below).
 
-### Related gap: app uploads don't reach Hive yet
+### Related gap: app uploads reach HDFS, not yet Hive
 
-The application's CSV upload (stage 6, `POST /api/datasets`) validates and preprocesses files
-into `data/processed/` on the local disk only. Writing them to HDFS (stage 7) and adding them
-to a Hive table (stage 8) isn't built yet, so anything uploaded through the app doesn't
-appear in the analytics. Today the analytics only show DS-01, which was loaded by hand as
+The application's CSV upload (`POST /api/datasets`) validates and preprocesses files into
+`data/processed/`. It then copies them to HDFS under `/polutary/processed` (stage 7, checked by
+SHA-256). Adding those HDFS folders to a Hive table (stage 8) isn't built yet, so anything
+uploaded through the app doesn't appear in the analytics. Today the analytics only show DS-01, which was loaded by hand as
 described above. Building the upload → HDFS → Hive path would give that pipeline a real target
 table. Adding a dataset with a documented source would make the analytics meaningful.
 

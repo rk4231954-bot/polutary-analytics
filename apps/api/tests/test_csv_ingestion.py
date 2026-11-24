@@ -194,6 +194,17 @@ def test_unregistered_batches_and_implausible_mortality_are_warnings():
     ]
 
 
+@pytest.mark.parametrize(("weights", "warned"), [(("0.45", "0.48"), True), (("450", "480"), False)])
+def test_weights_that_look_like_kilograms_are_flagged_not_converted(weights, warned):
+    text = "date,farm_code,batch_code,avg_weight_g\n" + "".join(
+        f"2026-10-0{i + 1},F-001,B-001,{w}\n" for i, w in enumerate(weights)
+    )
+    result = run(text)
+    assert result.ok
+    assert ("weight_looks_like_kg" in codes(result, "warnings")) is warned
+    assert list(result.processed["avg_weight_g"]) == [float(w) for w in weights]  # unchanged
+
+
 def test_no_valid_rows_fails():
     result = run(f"{HEADER}\nnot-a-date,F-001,B-001,30,60,100,0,1000\n")
     assert not result.ok

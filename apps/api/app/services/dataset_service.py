@@ -1,8 +1,10 @@
 """CSV dataset ingestion: upload checks, local storage, SQLite metadata, history and audit.
 
-Stage 6 ends with a processed CSV on local disk, marked ready for HDFS. Writing it
-to HDFS (stage 7) and exposing it in Hive (stage 8) are NOT done here; the
-dataset's hdfs/hive stages stay false until those stages really happen.
+A processed CSV is saved on local disk (stage 6) and then copied to HDFS through
+WebHDFS (stage 7) under HDFS_PROCESSED_DIR/farm_id=<farm>/upload_id=<upload>/. The HDFS
+copy is read back and checked by SHA-256 before the dataset counts as stored in HDFS.
+If HDFS is unavailable the dataset stays processed locally and the failure is recorded.
+Exposing uploads in Hive (stage 8) is NOT done here; the hive stage stays false.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from werkzeug.utils import secure_filename
 
 from app.extensions import db
 from app.models import DatasetEvent, DatasetUpload, Farm, PoultryBatch, User
-from app.services import audit_service
+from app.services import audit_service, hdfs_client
 from app.services.csv_ingestion import FarmContext, IngestionResult, ingest
 from app.services.csv_schema import FIELDS_BY_KEY, output_schema
 from app.services.permissions import accessible_farm_ids, can_access_farm
@@ -211,6 +213,9 @@ def upload_dataset(
         dataset.error = "An internal error stopped processing. The original file was kept."
         _event(dataset, "processing", "failure", dataset.error)
 
+    if dataset.status == "processed":
+        _store_in_hdfs(dataset)
+
     audit_service.record(
         "dataset.upload",
         "success" if dataset.status == "processed" else "failure",
@@ -223,11 +228,67 @@ def upload_dataset(
             "farmId": dataset.farm_id,
             "acceptedRows": dataset.accepted_rows,
             "rejectedRows": dataset.rejected_rows,
+            "hdfsPath": hdfs_info(dataset).get("path"),
         },
         commit=False,
     )
     db.session.commit()
     return dataset
+
+
+def hdfs_info(dataset: DatasetUpload) -> dict:
+    """Where HDFS holds the processed file ({} when it isn't stored in HDFS)."""
+    if not dataset.report:
+        return {}
+    return json.loads(dataset.report).get("hdfs") or {}
+
+
+def _hdfs_dir(dataset: DatasetUpload) -> str:
+    return (
+        f"{hdfs_client.processed_root()}/farm_id={int(dataset.farm_id)}/upload_id={int(dataset.id)}"
+    )
+
+
+def _store_in_hdfs(dataset: DatasetUpload) -> None:
+    """Copies the processed CSV and its manifest to HDFS and records the outcome."""
+    if not current_app.config["HDFS_ENABLED"]:
+        _event(
+            dataset,
+            "hdfs",
+            "warning",
+            "HDFS storage is turned off (HDFS_ENABLED=false); the processed file stays on "
+            "local disk only.",
+        )
+        return
+    folder = _hdfs_dir(dataset)
+    records_path = f"{folder}/{storage.PROCESSED_FILE}"
+    manifest_rel = str(PurePosixPath(dataset.processed_path).parent / storage.MANIFEST_FILE)
+    try:
+        records = storage.resolve(dataset.processed_path).read_bytes()
+        manifest = json.loads(storage.resolve(manifest_rel).read_bytes())
+        hdfs_client.mkdirs(folder)
+        sha = hdfs_client.store_verified(records_path, records)
+        manifest["hdfs"] = {"stored": True, "path": records_path, "sha256": sha}
+        manifest_bytes = json.dumps(manifest, indent=2).encode()
+        hdfs_client.store_verified(f"{folder}/{storage.MANIFEST_FILE}", manifest_bytes)
+        storage.write_bytes(manifest_rel, manifest_bytes)
+    except hdfs_client.HdfsError as exc:
+        _event(
+            dataset,
+            "hdfs",
+            "failure",
+            f"Not stored in HDFS: {exc} The processed file is kept on local disk.",
+        )
+        return
+    report = json.loads(dataset.report) if dataset.report else {}
+    report["hdfs"] = {"path": records_path, "sha256": sha, "storedAt": iso(utcnow())}
+    dataset.report = json.dumps(report)
+    _event(
+        dataset,
+        "hdfs",
+        "success",
+        f"Stored in HDFS at {records_path} ({len(records):,} bytes, SHA-256 verified).",
+    )
 
 
 def _finish(
@@ -302,7 +363,7 @@ def _finish(
         "dateRange": summary.get("dateRange"),
         "source": {"filename": dataset.original_filename, "sha256": dataset.sha256},
         "createdAt": iso(utcnow()),
-        "hdfs": {"stored": False, "note": "Written to HDFS in stage 7."},
+        "hdfs": {"stored": False},
     }
     storage.write_bytes(f"{out_dir}/{storage.PROCESSED_FILE}", records)
     storage.write_bytes(
@@ -321,7 +382,7 @@ def _finish(
         dataset,
         "local_storage",
         "success",
-        f"Processed file saved to data/{dataset.processed_path}; ready for HDFS (stage 7).",
+        f"Processed file saved to data/{dataset.processed_path}.",
     )
     # File the raw upload (and rejected rows) under its farm now that the farm is known.
     if dataset.farm_id is None:
@@ -403,6 +464,7 @@ def delete_dataset(user: User, dataset: DatasetUpload) -> None:
     processed = (
         str(PurePosixPath(dataset.processed_path).parent) if dataset.processed_path else None
     )
+    hdfs_path = hdfs_info(dataset).get("path")
     audit_service.record(
         "dataset.delete",
         actor=user,
@@ -412,11 +474,18 @@ def delete_dataset(user: User, dataset: DatasetUpload) -> None:
             "filename": dataset.original_filename,
             "farmId": dataset.farm_id,
             "status": dataset.status,
+            "hdfsPath": hdfs_path,
         },
         commit=False,
     )
+    hdfs_dir = str(PurePosixPath(hdfs_path).parent) if hdfs_path else None
     db.session.delete(dataset)
     db.session.commit()
+    if hdfs_dir and current_app.config["HDFS_ENABLED"]:
+        try:  # only this upload's own folder under HDFS_PROCESSED_DIR
+            hdfs_client.delete_dir(hdfs_dir)
+        except hdfs_client.HdfsError:
+            log.exception("Could not remove the HDFS copy %s", hdfs_dir)
     for folder in (processed, raw_dir):
         try:
             storage.remove_dir(folder)

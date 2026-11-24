@@ -20,8 +20,8 @@ same table.
 
 | Suite | Result |
 |---|---|
-| API unit tests | **179 passed**, 0 failed |
-| API integration tests (real HDFS + HiveServer2) | **12 passed**, 0 failed |
+| API unit tests | **190 passed**, 0 failed |
+| API integration tests (real HDFS + HiveServer2) | **13 passed**, 0 failed |
 | ML tests (`apps/ml`) | **3 passed**, 0 failed |
 | Lint (`bun run lint`) | passed |
 | `bun run test` (Turborepo) | 3/3 tasks successful |
@@ -35,6 +35,8 @@ same table.
 - Farm scoping is applied inside the HiveQL.
 - The alert trend statistics equal an independent least-squares fit in Python.
 - `/api/activity` lists real audit-log entries.
+- A CSV uploaded through the API lands in the real HDFS (checked with the `hdfs` CLI) and is
+  removed when the dataset is deleted (`test_hdfs_integration.py`, test root `/polutary-test`).
 - An unreachable HiveServer2 gives `503 HIVE_UNAVAILABLE`. A wrong password gives
   `503 HIVE_AUTH_FAILED`. An anonymous Hive login is refused.
 
@@ -64,7 +66,9 @@ same table.
 - FARM001 rows exported from Hive were uploaded through `POST /api/datasets`. Result:
   `processed`, 10 accepted, 0 rejected.
 - A file without `batch_id` was correctly rejected by validation.
-- The upload isn't written to HDFS/Hive yet (stage 7); `hdfsPath` and `hiveTable` are null.
+- The processed file is written to HDFS (stage 7). `hdfs dfs -cat` gives the same SHA-256 as the
+  local file, and deleting the dataset removes its HDFS folder. It isn't registered in Hive yet
+  (stage 8), so `hiveTable` is null.
 
 **HDFS integrity after restarts:** `hdfs fsck /` HEALTHY. The MD5s of the raw CSV, the cleaned
 Parquet file and the test file were unchanged.

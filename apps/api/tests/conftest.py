@@ -21,6 +21,8 @@ def app(tmp_path):
             "SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path / 'test.sqlite3'}",
             # Uploaded/processed datasets go to a per-test folder, never the real data/.
             "DATA_DIR": str(tmp_path / "data"),
+            # Unit tests never write to the real HDFS; HDFS tests replace hdfs_client.
+            "HDFS_ENABLED": False,
         },
     )
     yield app

@@ -14,6 +14,7 @@ Flask API: apps/api (app factory, one blueprint per domain)
    ├── SQLite (SQLAlchemy)     users, roles, farm assignments, farms, batches, inspections,
    │                           dataset uploads, audit log  ← app records and auth only
    ├── pandas                  CSV validation + preprocessing (uploads → data/processed)
+   ├── WebHDFS ─► HDFS         processed uploads → /polutary/processed (stage 7)
    └── PyHive ─► HiveServer2   (127.0.0.1:10000, password login, doAs)
                     └── Hive 4.1.0 (MapReduce, local mode), Derby metastore
                           └── database poultry_analytics → tables over HDFS
@@ -44,8 +45,10 @@ apps/ml (pandas, scikit-learn, statsmodels)
 ```
 
 In-app CSV upload (`POST /api/datasets`) is a separate path. It validates, preprocesses and
-records the file (SQLite metadata plus `data/processed/`). Writing those files to HDFS and Hive
-(roadmap stage 7) **isn't built yet**, so uploaded files don't change the Hive analytics.
+records the file (SQLite metadata plus `data/processed/`). It then writes the processed file to
+HDFS through WebHDFS (`/polutary/processed/farm_id=…/upload_id=…/`, read back and SHA-256
+checked). Registering those folders in Hive (stage 8) **isn't built yet**, so uploaded files
+don't change the Hive analytics.
 Steps 1–3 were done by hand (see `docs/research/datasets.md`).
 
 ## Request flow for one analytics call

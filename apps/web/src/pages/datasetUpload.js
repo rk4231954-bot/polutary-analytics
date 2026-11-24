@@ -1,11 +1,11 @@
 /**
- * Dataset Upload — CSV ingestion (stage 6).
+ * Dataset Upload — CSV ingestion (stages 6–7).
  *
  * Client side (real, from the selected file): parsing, preview, column
  * mapping, missing/duplicate/invalid summaries. These are pre-upload checks.
  * Server side (Flask API, never simulated): upload, validation, preprocessing
- * and local storage of the processed file. HDFS (stage 7) and Hive (stage 8)
- * steps stay pending until the API reports them complete.
+ * local storage of the processed file, and its copy in HDFS (read back and
+ * checked by the API). The Hive step (stage 8) stays pending until the API reports it.
  */
 import { config } from "../config.js";
 import { icon } from "../components/icons.js";
@@ -34,7 +34,7 @@ const STAGES = [
   { key: "hdfs", label: "Stored in HDFS", hint: "Written to Hadoop" },
   { key: "hive", label: "Available in Hive", hint: "Queryable with HiveQL" },
 ];
-// "processed" is final for stage 6: the file is ready for HDFS, which is not built yet.
+// "processed" is final: the file is stored locally and, when HDFS was reachable, in HDFS.
 const TERMINAL = new Set(["processed", "available", "failed"]);
 
 function typeLabel(field) {
@@ -48,13 +48,21 @@ function stepper(dataset) {
   const finished = TERMINAL.has(dataset?.status) && !failed;
   // A finished dataset has no step "in progress": later steps are simply not built yet.
   const firstPending = finished ? -1 : STAGES.findIndex((s) => !stages[s.key]);
+  // The API records an HDFS write that failed or was turned off as an "hdfs" history entry.
+  const hdfsNote = (dataset?.history || []).filter((e) => e.stage === "hdfs").at(-1);
   return html`<ol class="pa-steps" aria-label="Ingestion pipeline">
     ${STAGES.map((s, i) => {
       const done = Boolean(stages[s.key]);
       const isCurrent = dataset && i === firstPending;
       const cls = done ? "is-done" : isCurrent ? (failed ? "is-error" : "is-active") : "";
       const marker = done ? icon("check", { size: 14, strokeWidth: 2.5 }) : isCurrent && failed ? icon("x", { size: 14, strokeWidth: 2.5 }) : String(i + 1);
-      const state = done ? "complete" : isCurrent ? (failed ? "failed" : "in progress") : finished ? "not built yet" : "pending";
+      const state = done
+        ? "complete"
+        : isCurrent
+          ? failed ? "failed" : "in progress"
+          : s.key === "hdfs" && hdfsNote && hdfsNote.status !== "success"
+            ? "not stored"
+            : finished ? "not built yet" : "pending";
       return html`<li class="pa-step ${cls}" aria-label="${s.label}: ${state}">
         <span class="pa-step__marker">${marker}</span>
         <span class="pa-step__label">${s.label}</span>

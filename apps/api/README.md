@@ -1,10 +1,10 @@
 # apps/api: Flask REST API
 
 Authentication, role-based access control, farms, poultry batches, health inspections,
-audit logging (stage 3) and CSV dataset ingestion (stage 6: upload, validation, preprocessing,
-local storage), with application data in SQLite through SQLAlchemy.
-Hadoop/HDFS, Hive and ML arrive in later stages and are **not** part of this code yet: processed
-datasets are stored locally and marked *ready for HDFS*; nothing claims they are in HDFS or Hive.
+audit logging (stage 3), CSV dataset ingestion (stage 6: upload, validation, preprocessing,
+local storage), HDFS storage of processed uploads (stage 7, WebHDFS) and analytics computed by
+HiveQL on Apache Hive, with application data in SQLite through SQLAlchemy. Uploads are not yet
+registered as Hive tables (stage 8) and no ML model is served (stage 10).
 
 This is a standalone Python project (uv-managed). Bun is not needed to run it.
 
@@ -247,7 +247,7 @@ columns, remove exact duplicates, sort by date and batch. **Missing values stay 
 is imputed, estimated or corrected.**
 
 **Storage** (`DATA_DIR`, default `<repo>/data`, git-ignored, never web-served; folder names use
-only numeric ids, in Hive partition style so stage 7 can copy them to HDFS unchanged):
+only numeric ids, in Hive partition style, and the same layout is used in HDFS):
 
 ```
 data/raw/farm_id=<farm>/upload_id=<id>/original.csv        the file exactly as uploaded
@@ -256,6 +256,27 @@ data/raw/unassigned/upload_id=<id>/...                     farm could not be res
 data/processed/farm_id=<farm>/upload_id=<id>/records.csv   cleaned rows, fixed 11-column schema
 data/processed/farm_id=<farm>/upload_id=<id>/manifest.json columns + Hive types, row count, sha256
 ```
+
+**HDFS (stage 7).** After a successful preprocess, `records.csv` and `manifest.json` are written
+through WebHDFS to `HDFS_PROCESSED_DIR/farm_id=<farm>/upload_id=<id>/` (default
+`/polutary/processed`). Each file is read back and compared by SHA-256. Only then does the
+dataset show `stages.hdfs: true` and an `hdfsPath`, and the manifest records `hdfs.stored: true`.
+
+- **HDFS unreachable:** the dataset stays `processed` on local disk, and its history shows an
+  `hdfs` **failure** entry. It is never reported as stored.
+- **Deleting a dataset** also removes its own HDFS folder, and nothing else.
+- **Path check:** paths outside `HDFS_PROCESSED_DIR` are refused.
+- **Weight units:** an `avg_weight_g` column whose median is below 20 g gets a
+  `weight_looks_like_kg` warning. The values are kept as given; they aren't converted.
+
+Settings:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `HDFS_ENABLED` | `true` | turn the HDFS copy on or off |
+| `HDFS_USER` | `HIVE_USERNAME`, then the OS user | user for HDFS writes (simple auth) |
+| `HDFS_PROCESSED_DIR` | `/polutary/processed` | where processed uploads go |
+| `HDFS_DATANODE_HOST` | none | replaces the DataNode hostname in WebHDFS redirects; `127.0.0.1` on the loopback-only native install |
 
 `records.csv`: UTF-8, comma-separated, header row, empty field = missing, columns `date,
 farm_code, batch_code, temperature_c, humidity_pct, feed_kg, water_l, mortality, avg_weight_g,
